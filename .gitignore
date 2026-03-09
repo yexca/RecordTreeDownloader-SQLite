@@ -1,4 +1,4 @@
 test*
 *.db
-record/*.json
+record/
 __pycache__

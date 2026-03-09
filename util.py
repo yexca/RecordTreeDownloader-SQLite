@@ -1,16 +1,17 @@
 import math, shutil
 from pathlib import Path
+import config
 
 class Util:
     def __init__(self):
         self.BASE_DIR = Path(__file__).resolve().parent
-        self.downloadDir = Path("D:/Downloads")
+        self.downloadDir = Path(config.DOWNLOAD_DIR)
 
     def get_database_path(self):
-        return self.BASE_DIR / "database" / "record.db"
+        return self.BASE_DIR / "database" / config.DATABASE_NAME
     
     def get_record_path(self):
-        return self.BASE_DIR / "record" / "Record Tree.json"
+        return self.BASE_DIR / "record" / config.DATA_NAME
     
     def get_save_dir(self, name):
         saveDir : Path = self.downloadDir / name

@@ -1,7 +1,7 @@
 import json
 from util import Util
-from authorMapper import AuthorMapper
-from recordMapper import RecordMapper
+from mapper.authorMapper import AuthorMapper
+from mapper.recordMapper import RecordMapper
 
 def insert_record():
 
