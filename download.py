@@ -31,7 +31,7 @@ class Download:
             # download file
             link = row["link"]
             saveDir = self.util.get_save_dir(authorName)
-            print(f"文件将存入: {saveDir}")
+            print(f"The file was saved to: {saveDir}")
             self.mega.download(link, saveDir)
 
             # add to database
