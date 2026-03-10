@@ -1,6 +1,6 @@
 from mega import Mega
 from download import Download
-from authorMapper import AuthorMapper
+from mapper.authorMapper import AuthorMapper
 from recordInsert import insert_record
 from recordinsertbyxlsx import insert_record_xlsx
 import config

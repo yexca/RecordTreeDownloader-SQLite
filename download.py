@@ -1,5 +1,5 @@
-from authorMapper import AuthorMapper
-from recordMapper import RecordMapper
+from mapper.authorMapper import AuthorMapper
+from mapper.recordMapper import RecordMapper
 from mega import Mega
 from util import Util
 
