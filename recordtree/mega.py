@@ -1,0 +1,1 @@
+"""MEGAcmd integration placeholder."""

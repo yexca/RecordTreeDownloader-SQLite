@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recordtree-downloader-sqlite"
+version = "0.1.0"
+description = "Local SQLite-backed Record Tree downloader CLI."
+requires-python = ">=3.11"
+dependencies = [
+    "openpyxl",
+    "rich",
+    "typer",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[project.scripts]
+recordtree = "recordtree.cli:app"

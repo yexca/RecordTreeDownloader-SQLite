@@ -1,4 +1,15 @@
-test*
+test*.db
+test*.sqlite
+test*.sqlite3
+test_output/
 *.db
+*.sqlite
+*.sqlite3
 record/
+files/
+dev_documents/
+real_test/
+env/
+downloads/
+logs/
 __pycache__
