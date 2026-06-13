@@ -47,7 +47,7 @@ def calculate_required_bytes(selected_bytes: int, percent: int, min_mb: int) -> 
 
 def format_bytes(value: int | None) -> str:
     if value is None:
-        return ""
+        return "-"
     amount = float(value)
     for unit in ("B", "KB", "MB", "GB"):
         if amount < 1024 or unit == "GB":

@@ -5,13 +5,14 @@ from pathlib import Path
 
 from . import config as config_module
 from . import db
-from .exceptions import ImportRowError, NotFoundError, NotImplementedFeatureError, ValidationError
+from .exceptions import ConfigError, ImportRowError, NotFoundError, NotImplementedFeatureError, ValidationError
 from .importer.excel import ExcelImporter
 from .importer.json_importer import JsonImporter
 from .importer.legacy_db import LegacyDbImporter, LegacyMigrationService
 from .importer.service import ImportService, apply_upsert_result
-from .models import ImportResult, ImportStats, InitResult
+from .models import ImportResult, ImportStats, InitResult, RecordDetail, RecordSummary, StatsResult
 from .repositories import ImportRepository
+from .search import SearchService
 
 
 class RecordTreeApp:
@@ -111,8 +112,64 @@ class RecordTreeApp:
             extra_columns=tuple(getattr(importer, "extra_columns", ())),
         )
 
-    def stats(self) -> None:
-        raise NotImplementedFeatureError("Stats are not implemented yet.")
+    def stats(self) -> StatsResult:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).stats()
+        finally:
+            conn.close()
+
+    def search_actor(self, name: str, limit: int = 50) -> list[RecordSummary]:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).search_actor(name, limit)
+        finally:
+            conn.close()
+
+    def search_title(self, keyword: str, limit: int = 50) -> list[RecordSummary]:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).search_title(keyword, limit)
+        finally:
+            conn.close()
+
+    def search_source(self, source: str, limit: int = 50) -> list[RecordSummary]:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).search_source(source, limit)
+        finally:
+            conn.close()
+
+    def search_date(
+        self,
+        date_from: str | None,
+        date_to: str | None,
+        limit: int = 50,
+    ) -> list[RecordSummary]:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).search_date(date_from, date_to, limit)
+        finally:
+            conn.close()
+
+    def list_undownloaded(
+        self,
+        actor: str | None = None,
+        source: str | None = None,
+        limit: int = 50,
+    ) -> list[RecordSummary]:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).list_undownloaded(actor, source, limit)
+        finally:
+            conn.close()
+
+    def info(self, record_id_or_key: str) -> RecordDetail:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).get_info(record_id_or_key)
+        finally:
+            conn.close()
 
     def _create_importer(self, path: Path):
         extension = path.suffix.casefold()
@@ -123,6 +180,13 @@ class RecordTreeApp:
         if extension == ".json":
             return "json", JsonImporter()
         raise ValidationError(f"Unsupported import file extension: {extension}")
+
+    def _open_app_db(self):
+        app_config = config_module.load_config(Path("env/config.toml"))
+        if not app_config.database_path.exists():
+            raise ConfigError(f"Database file does not exist: {app_config.database_path}")
+        conn = db.connect(app_config.database_path)
+        return conn
 
 
 def _extra_columns_note(extra_columns: tuple[str, ...]) -> str | None:

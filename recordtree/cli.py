@@ -8,6 +8,9 @@ from rich.table import Table
 
 from .app import RecordTreeApp
 from .exceptions import ConfigError, NotFoundError, NotImplementedFeatureError, RecordTreeError
+from .models import RecordDetail, RecordSummary, StatsResult
+from .search import preview_url
+from .sizes import format_bytes
 
 app = typer.Typer(
     help="Local SQLite-backed Record Tree downloader.",
@@ -91,8 +94,206 @@ def import_command(path: Path) -> None:
 def stats() -> None:
     """Show database statistics."""
     try:
-        RecordTreeApp().stats()
+        result = RecordTreeApp().stats()
     except NotImplementedFeatureError as error:
         console.print(f"[yellow]{error}[/yellow]")
     except RecordTreeError as error:
         _handle_error(error)
+    else:
+        _print_stats(result)
+
+
+@app.command(name="search-actor")
+def search_actor(name: str, limit: int = 50) -> None:
+    """Search records by actor name."""
+    try:
+        rows = RecordTreeApp().search_actor(name, limit)
+    except RecordTreeError as error:
+        _handle_error(error)
+    else:
+        _print_record_rows("Actor search", rows)
+
+
+@app.command(name="search-title")
+def search_title(keyword: str, limit: int = 50) -> None:
+    """Search records by title or upload title."""
+    try:
+        rows = RecordTreeApp().search_title(keyword, limit)
+    except RecordTreeError as error:
+        _handle_error(error)
+    else:
+        _print_record_rows("Title search", rows)
+
+
+@app.command(name="search-source")
+def search_source(source: str, limit: int = 50) -> None:
+    """Search records by source name."""
+    try:
+        rows = RecordTreeApp().search_source(source, limit)
+    except RecordTreeError as error:
+        _handle_error(error)
+    else:
+        _print_record_rows("Source search", rows)
+
+
+@app.command(name="search-date")
+def search_date(
+    date_from: str | None = typer.Option(None, "--from"),
+    date_to: str | None = typer.Option(None, "--to"),
+    limit: int = 50,
+) -> None:
+    """Search records by delivery date range."""
+    try:
+        rows = RecordTreeApp().search_date(date_from, date_to, limit)
+    except RecordTreeError as error:
+        _handle_error(error)
+    else:
+        _print_record_rows("Date search", rows)
+
+
+@app.command(name="list-undownloaded")
+def list_undownloaded(
+    actor: str | None = None,
+    source: str | None = None,
+    limit: int = 50,
+) -> None:
+    """List records with active links not marked completed."""
+    try:
+        rows = RecordTreeApp().list_undownloaded(actor, source, limit)
+    except RecordTreeError as error:
+        _handle_error(error)
+    else:
+        _print_record_rows("Undownloaded records", rows)
+
+
+@app.command()
+def info(record_id_or_key: str) -> None:
+    """Show record details and active links."""
+    try:
+        detail = RecordTreeApp().info(record_id_or_key)
+    except RecordTreeError as error:
+        _handle_error(error)
+    else:
+        _print_record_detail(detail)
+
+
+def _dash(value: object | None) -> str:
+    if value is None:
+        return "-"
+    text = str(value)
+    return text if text else "-"
+
+
+def _print_record_rows(title: str, rows: list[RecordSummary]) -> None:
+    table = Table(title=title)
+    table.add_column("id", style="cyan")
+    table.add_column("delivery_date")
+    table.add_column("actor")
+    table.add_column("title")
+    table.add_column("source")
+    table.add_column("size")
+    table.add_column("active_links")
+    table.add_column("downloaded")
+    for row in rows:
+        table.add_row(
+            str(row.id),
+            _dash(row.delivery_date),
+            _dash(row.actor),
+            row.title,
+            _dash(row.source),
+            format_bytes(row.size_bytes),
+            str(row.active_links),
+            row.downloaded,
+        )
+    console.print(table)
+
+
+def _print_record_detail(detail: RecordDetail) -> None:
+    table = Table(title="Record group")
+    table.add_column("Item", style="cyan")
+    table.add_column("Value")
+    table.add_row("id", str(detail.id))
+    table.add_row("source_key", detail.source_key)
+    table.add_row("actor", detail.actor)
+    table.add_row("delivery_date", _dash(detail.delivery_date))
+    table.add_row("entry_date", _dash(detail.entry_date))
+    table.add_row("title", detail.title)
+    table.add_row("source", detail.source)
+    table.add_row("upload_title", detail.upload_title)
+    table.add_row("note", _dash(detail.note))
+    table.add_row("size", format_bytes(detail.size_bytes))
+    table.add_row("active_links", str(detail.active_links))
+    table.add_row("downloaded", detail.downloaded)
+    console.print(table)
+
+    link_table = Table(title="Active links")
+    link_table.add_column("order", style="cyan")
+    link_table.add_column("type")
+    link_table.add_column("size")
+    link_table.add_column("status")
+    link_table.add_column("url")
+    for link in detail.links:
+        link_table.add_row(
+            str(link.link_order),
+            _dash(link.file_type),
+            format_bytes(link.size_bytes),
+            link.status,
+            preview_url(link.mega_url),
+        )
+    console.print(link_table)
+    if detail.inactive_link_count:
+        console.print(f"Historical inactive links: {detail.inactive_link_count}")
+
+
+def _print_stats(result: StatsResult) -> None:
+    table = Table(title="RecordTree stats")
+    table.add_column("Item", style="cyan")
+    table.add_column("Value")
+    table.add_row("Record groups", str(result.total_record_groups))
+    table.add_row("Active links", str(result.active_link_count))
+    table.add_row("Inactive historical links", str(result.inactive_link_count))
+    table.add_row("Actors", str(result.actor_count))
+    table.add_row("Sources", str(result.source_count))
+    table.add_row("Downloaded all", str(result.downloaded_all))
+    table.add_row("Downloaded partial", str(result.downloaded_partial))
+    table.add_row("Downloaded none", str(result.downloaded_none))
+    table.add_row("Downloaded unknown", str(result.downloaded_unknown))
+    console.print(table)
+
+    imports = Table(title="Recent imports")
+    imports.add_column("id", style="cyan")
+    imports.add_column("type")
+    imports.add_column("file")
+    imports.add_column("started_at")
+    imports.add_column("status")
+    imports.add_column("rows")
+    imports.add_column("errors")
+    for item in result.recent_imports:
+        imports.add_row(
+            str(item.id),
+            item.source_type,
+            item.source_file_name,
+            item.started_at,
+            item.status,
+            str(item.total_rows),
+            str(item.error_count),
+        )
+    console.print(imports)
+
+    downloads = Table(title="Recent downloads")
+    downloads.add_column("id", style="cyan")
+    downloads.add_column("record")
+    downloads.add_column("requested_at")
+    downloads.add_column("status")
+    downloads.add_column("selected")
+    downloads.add_column("message")
+    for item in result.recent_downloads:
+        downloads.add_row(
+            str(item.id),
+            str(item.record_group_id),
+            item.requested_at,
+            item.status,
+            format_bytes(item.selected_bytes),
+            _dash(item.message),
+        )
+    console.print(downloads)

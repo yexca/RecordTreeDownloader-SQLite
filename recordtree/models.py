@@ -67,6 +67,88 @@ class InitResult:
 
 
 @dataclass(frozen=True)
+class RecordSummary:
+    id: int
+    source_key: str
+    delivery_date: str | None
+    entry_date: str | None
+    actor: str | None
+    title: str
+    source: str | None
+    size_bytes: int | None
+    active_links: int
+    completed_links: int
+    downloaded: str
+
+
+@dataclass(frozen=True)
+class LinkSummary:
+    id: int
+    link_order: int
+    mega_url: str
+    file_type: str | None
+    size_bytes: int
+    formatted_size: str | None
+    status: str
+
+
+@dataclass(frozen=True)
+class RecordDetail:
+    id: int
+    source_key: str
+    actor: str
+    delivery_date: str | None
+    entry_date: str | None
+    title: str
+    source: str
+    upload_title: str
+    note: str | None
+    size_bytes: int | None
+    size_raw: str | None
+    active_links: int
+    completed_links: int
+    downloaded: str
+    links: list[LinkSummary]
+    inactive_link_count: int
+
+
+@dataclass(frozen=True)
+class ImportSummary:
+    id: int
+    source_type: str
+    source_file_name: str
+    started_at: str
+    status: str
+    total_rows: int
+    error_count: int
+
+
+@dataclass(frozen=True)
+class DownloadSummary:
+    id: int
+    record_group_id: int
+    requested_at: str
+    status: str
+    selected_bytes: int
+    message: str | None
+
+
+@dataclass(frozen=True)
+class StatsResult:
+    total_record_groups: int
+    active_link_count: int
+    inactive_link_count: int
+    actor_count: int
+    source_count: int
+    downloaded_all: int
+    downloaded_partial: int
+    downloaded_none: int
+    downloaded_unknown: int
+    recent_imports: list[ImportSummary]
+    recent_downloads: list[DownloadSummary]
+
+
+@dataclass(frozen=True)
 class DownloadLink:
     id: int
     mega_url: str
