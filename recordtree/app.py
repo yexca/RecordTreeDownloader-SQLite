@@ -7,6 +7,7 @@ from . import config as config_module
 from . import db
 from .exceptions import ImportRowError, NotFoundError, NotImplementedFeatureError, ValidationError
 from .importer.excel import ExcelImporter
+from .importer.legacy_db import LegacyDbImporter, LegacyMigrationService
 from .importer.service import ImportService, apply_upsert_result
 from .models import ImportResult, ImportStats, InitResult
 from .repositories import ImportRepository
@@ -64,19 +65,25 @@ class RecordTreeApp:
         try:
             with db.transaction(conn):
                 service = ImportService(conn)
-                for record in importer.iter_records(source_path):
-                    stats.total_rows += 1
-                    if isinstance(record, ImportRowError):
-                        service.record_error(import_id, record)
-                        stats.error_count += 1
-                        continue
-                    try:
-                        result = service.upsert_record(import_id, record)
-                    except ImportRowError as error:
-                        service.record_error(import_id, error)
-                        stats.error_count += 1
-                    else:
-                        apply_upsert_result(stats, result)
+                if isinstance(importer, LegacyDbImporter):
+                    migration = LegacyMigrationService(conn, import_id)
+                    for legacy_row in importer.iter_rows(source_path):
+                        stats.total_rows += 1
+                        migration.migrate_row(legacy_row, stats)
+                else:
+                    for record in importer.iter_records(source_path):
+                        stats.total_rows += 1
+                        if isinstance(record, ImportRowError):
+                            service.record_error(import_id, record)
+                            stats.error_count += 1
+                            continue
+                        try:
+                            result = service.upsert_record(import_id, record)
+                        except ImportRowError as error:
+                            service.record_error(import_id, error)
+                            stats.error_count += 1
+                        else:
+                            apply_upsert_result(stats, result)
                 status = "completed_with_errors" if stats.error_count else "completed"
                 import_repo.finish_import(
                     import_id,
@@ -110,6 +117,8 @@ class RecordTreeApp:
         extension = path.suffix.casefold()
         if extension in {".xlsx", ".xlsm"}:
             return "xlsx", ExcelImporter()
+        if extension in {".db", ".sqlite", ".sqlite3"}:
+            return "legacy_db", LegacyDbImporter()
         raise ValidationError(f"Unsupported import file extension: {extension}")
 
 
