@@ -4,6 +4,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.table import Table
 
 from .app import RecordTreeApp
 from .exceptions import ConfigError, NotFoundError, NotImplementedFeatureError, RecordTreeError
@@ -28,11 +29,21 @@ def _handle_error(error: RecordTreeError) -> None:
 def init() -> None:
     """Create local config, database, download, and log paths."""
     try:
-        RecordTreeApp().init()
+        result = RecordTreeApp().init()
     except NotImplementedFeatureError as error:
         console.print(f"[yellow]{error}[/yellow]")
     except RecordTreeError as error:
         _handle_error(error)
+    else:
+        table = Table(title="RecordTree initialized")
+        table.add_column("Item", style="cyan")
+        table.add_column("Path")
+        table.add_row("Config", str(result.config_path))
+        table.add_row("Database", str(result.database_path))
+        table.add_row("Downloads", str(result.downloads_dir))
+        table.add_row("Logs", str(result.logs_dir))
+        table.add_row("Schema", result.schema_version)
+        console.print(table)
 
 
 @app.command()
