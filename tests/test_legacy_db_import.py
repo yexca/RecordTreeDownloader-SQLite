@@ -8,6 +8,7 @@ from openpyxl import Workbook
 
 from recordtree.app import RecordTreeApp
 from recordtree.db import connect
+from recordtree.importer.legacy_db import _legacy_completed_date
 
 
 def _mega(url: str, size: int = 1024) -> str:
@@ -152,3 +153,14 @@ def test_legacy_db_import_matches_creates_and_preserves_status(tmp_path: Path, m
         assert error is not None
     finally:
         conn.close()
+
+
+def test_legacy_completed_date_requires_iso_date() -> None:
+    assert _legacy_completed_date("2026-01-02") == "2026-01-02"
+    assert _legacy_completed_date("0") is None
+    assert _legacy_completed_date(0) is None
+    assert _legacy_completed_date("0.0") is None
+    assert _legacy_completed_date("") is None
+    assert _legacy_completed_date(None) is None
+    assert _legacy_completed_date("2026-1-2") is None
+    assert _legacy_completed_date("2026-02-30") is None

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 import sqlite3
 
 from recordtree.exceptions import ImportRowError, ValidationError
@@ -14,6 +15,9 @@ from recordtree.repositories import (
     LinkRepository,
 )
 from recordtree.sizes import parse_size_text
+
+
+LEGACY_DOWNLOADED_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 REQUIRED_SCHEMA = {
@@ -218,11 +222,8 @@ class LegacyMigrationService:
             downloaded_raw,
             now,
         )
-        if downloaded_raw is not None and downloaded_raw != "0" and not self.downloads.legacy_completed_exists(link_id):
-            try:
-                downloaded_date = normalize_date(downloaded_raw)
-            except ValidationError:
-                downloaded_date = None
+        downloaded_date = _legacy_completed_date(downloaded_raw)
+        if downloaded_date is not None and not self.downloads.legacy_completed_exists(link_id):
             self.downloads.insert_legacy_completed(
                 record_group_id=group_id,
                 link_id=link_id,
@@ -247,6 +248,16 @@ def validate_legacy_schema(conn: sqlite3.Connection) -> None:
             raise ValidationError(
                 f"Missing legacy columns in {table}: {', '.join(missing_columns)}"
             )
+
+
+def _legacy_completed_date(value: object) -> str | None:
+    text = clean_text(value)
+    if text is None or LEGACY_DOWNLOADED_DATE_RE.fullmatch(text) is None:
+        return None
+    try:
+        return normalize_date(text)
+    except ValidationError:
+        return None
 
 
 def _utc_now_from_db(conn: sqlite3.Connection) -> str:
