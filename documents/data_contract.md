@@ -48,6 +48,8 @@ The legacy SQLite importer requires:
 
 Legacy rows are matched to existing active links by URL. A matched URL reuses the existing record group and link. An unmatched URL creates a legacy-only record group and link.
 
+For best metadata preservation, import the primary Excel workbook before importing the legacy SQLite database. In that order, URL matches attach legacy IDs and `legacy_completed` history to Excel-backed record groups instead of creating legacy-only groups first.
+
 ## Legacy JSON
 
 The legacy JSON importer supports a root list. Each author item must be an object with:
@@ -56,6 +58,8 @@ The legacy JSON importer supports a root list. Each author item must be an objec
 - `records`, a list of record objects
 
 Each record object uses the same MEGA JSON fields described above, including a `property` link list. JSON metadata has lower priority than existing Excel metadata when links overlap.
+
+Legacy JSON should be imported after Excel and legacy SQLite. It is intended for compatibility checks and backfill, not as the authoritative metadata source.
 
 ## Identity And Link Rules
 

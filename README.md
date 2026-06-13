@@ -51,6 +51,8 @@ recordtree import files/record.db
 recordtree import "files/Record Tree.Json"
 ```
 
+Recommended order is Excel first, then the legacy SQLite database, then the legacy JSON export. Excel is treated as the highest-quality metadata source; the legacy SQLite import then attaches old download history by matching existing active URLs, and JSON remains a lower-priority compatibility source.
+
 Imports are designed to be repeatable. The importer upserts record groups by a generated source key and preserves historical inactive links when a record's active link set changes.
 
 Before importing a large legacy database or doing a large re-import, back up `env/recordtree.sqlite3`. If SQLite WAL files exist, include `env/recordtree.sqlite3-wal` and `env/recordtree.sqlite3-shm`, or use the SQLite backup API.

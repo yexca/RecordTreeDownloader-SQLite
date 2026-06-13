@@ -51,6 +51,8 @@ recordtree import files/record.db
 recordtree import "files/Record Tree.Json"
 ```
 
+推荐导入顺序是先导入 Excel 主表，再导入旧 SQLite 数据库，最后导入旧 JSON 导出。Excel 会作为最高质量的元数据来源；旧 SQLite 导入会通过已存在的活跃 URL 追加旧下载历史；JSON 仅作为较低优先级的兼容来源。
+
 导入设计为可重复执行。工具会通过生成的 `source_key` 对记录组做 upsert；当同一记录的活跃链接集合变化时，会保留旧链接作为历史 inactive 链接。
 
 导入大型旧数据库或进行大规模重新导入前，请备份 `env/recordtree.sqlite3`。如果存在 SQLite WAL 文件，也要同时备份 `env/recordtree.sqlite3-wal` 和 `env/recordtree.sqlite3-shm`，或使用 SQLite backup API。
