@@ -356,13 +356,21 @@ Main interfaces:
 ```python
 def resolve_executable(configured: str) -> str: ...
 def check_login(mega_whoami: str) -> MegaLoginStatus: ...
-def download_link(mega_get: str, mega_url: str, output_dir: Path) -> MegaCommandResult: ...
+def download_link(
+    mega_get: str,
+    mega_url: str,
+    output_dir: Path,
+    output_callback: Callable[[str], None] | None = None,
+) -> MegaCommandResult: ...
 ```
 
 Requirements:
 
-- Use `subprocess.run([...], shell=False)`.
-- Capture stdout/stderr.
+- Use `subprocess.run([...], shell=False)` for captured calls.
+- Use `subprocess.Popen([...], shell=False)` when streaming MEGAcmd output.
+- Decode stdout/stderr with `encoding="utf-8", errors="replace"`.
+- Capture stdout/stderr and optionally forward chunks to the CLI.
+- Do not set a timeout for `mega-get` downloads.
 - Cap output summaries, for example at 4000 characters, to avoid oversized database records.
 - Do not update the database from this module.
 

@@ -148,7 +148,12 @@ def test_download_success_failure_and_preflight_blocks(
         lambda _whoami: MegaLoginStatus(True, 0, "Account: test"),
     )
 
-    def fake_download(_mega_get: str, url: str, _output_dir: Path) -> MegaCommandResult:
+    def fake_download(
+        _mega_get: str,
+        url: str,
+        _output_dir: Path,
+        output_callback=None,
+    ) -> MegaCommandResult:
         calls.append(url)
         if url.endswith("/2"):
             return MegaCommandResult(1, "bad", "failed")
@@ -184,6 +189,41 @@ def test_download_success_failure_and_preflight_blocks(
     assert calls == []
 
 
+def test_download_forwards_megacmd_output_callback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    group_id = _setup(tmp_path, monkeypatch)
+    output_chunks: list[str] = []
+    monkeypatch.setattr("recordtree.mega.resolve_executable", lambda configured: configured)
+    monkeypatch.setattr(
+        "recordtree.mega.check_login",
+        lambda _whoami: MegaLoginStatus(True, 0, "Account: test"),
+    )
+
+    def fake_download(
+        _mega_get: str,
+        _url: str,
+        _output_dir: Path,
+        output_callback=None,
+    ) -> MegaCommandResult:
+        assert output_callback is not None
+        output_callback("downloading\r100%\n")
+        return MegaCommandResult(0, "downloading\r100%\n", "")
+
+    monkeypatch.setattr("recordtree.mega.download_link", fake_download)
+
+    result = RecordTreeApp().download(
+        str(group_id),
+        types="mp4",
+        assume_yes=True,
+        output_callback=output_chunks.append,
+    )
+
+    assert result.status == "completed"
+    assert output_chunks == ["downloading\r100%\n"]
+
+
 def test_download_cancelled_records_row(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     group_id = _setup(tmp_path, monkeypatch)
     monkeypatch.setattr("recordtree.mega.resolve_executable", lambda configured: configured)
@@ -193,7 +233,7 @@ def test_download_cancelled_records_row(tmp_path: Path, monkeypatch: pytest.Monk
     )
     monkeypatch.setattr(
         "recordtree.mega.download_link",
-        lambda *_args: MegaCommandResult(0, "ok", ""),
+        lambda *_args, **_kwargs: MegaCommandResult(0, "ok", ""),
     )
 
     result = RecordTreeApp().download(
@@ -224,7 +264,12 @@ def test_download_actor_defaults_to_three_undownloaded_records(
         lambda _whoami: MegaLoginStatus(True, 0, "Account: test"),
     )
 
-    def fake_download(_mega_get: str, url: str, _output_dir: Path) -> MegaCommandResult:
+    def fake_download(
+        _mega_get: str,
+        url: str,
+        _output_dir: Path,
+        output_callback=None,
+    ) -> MegaCommandResult:
         calls.append(url)
         return MegaCommandResult(0, "ok", "")
 
@@ -249,7 +294,7 @@ def test_download_actor_reports_when_nothing_is_undownloaded(
     )
     monkeypatch.setattr(
         "recordtree.mega.download_link",
-        lambda *_args: MegaCommandResult(0, "ok", ""),
+        lambda *_args, **_kwargs: MegaCommandResult(0, "ok", ""),
     )
 
     RecordTreeApp().download_actor(actor_id, limit=5, assume_yes=True)
@@ -286,7 +331,12 @@ def test_download_actor_skips_completed_links_in_partial_records(
         lambda _whoami: MegaLoginStatus(True, 0, "Account: test"),
     )
 
-    def fake_download(_mega_get: str, url: str, _output_dir: Path) -> MegaCommandResult:
+    def fake_download(
+        _mega_get: str,
+        url: str,
+        _output_dir: Path,
+        output_callback=None,
+    ) -> MegaCommandResult:
         calls.append(url)
         return MegaCommandResult(0, "ok", "")
 

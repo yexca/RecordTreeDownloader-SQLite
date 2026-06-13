@@ -253,6 +253,7 @@ def download(
                 output=output,
                 assume_yes=yes,
                 confirm_callback=None if yes else confirm,
+                output_callback=_print_process_output,
             )
         else:
             result = app_service.download(
@@ -262,6 +263,7 @@ def download(
                 output=output,
                 assume_yes=yes,
                 confirm_callback=None if yes else confirm,
+                output_callback=_print_process_output,
             )
     except RecordTreeError as error:
         _handle_error(error)
@@ -286,6 +288,11 @@ def _dash(value: object | None) -> str:
         return "-"
     text = str(value)
     return text if text else "-"
+
+
+def _print_process_output(text: str) -> None:
+    console.file.write(text)
+    console.file.flush()
 
 
 def _print_record_rows(title: str, rows: list[RecordSummary]) -> None:

@@ -314,6 +314,7 @@ class RecordTreeApp:
         assume_yes: bool = False,
         confirm_callback=None,
         only_undownloaded: bool = False,
+        output_callback: Callable[[str], None] | None = None,
     ) -> DownloadExecutionResult:
         app_config = config_module.load_config(Path("env/config.toml"))
         plan = self.build_download_plan(record_id_or_key, include_par2, types, output, only_undownloaded)
@@ -390,7 +391,12 @@ class RecordTreeApp:
                 item_id = downloads.create_download_item(download_id, link.id)
                 downloads.start_download_item(item_id)
                 try:
-                    result = mega.download_link(mega_get, link.mega_url, plan.output_dir)
+                    result = mega.download_link(
+                        mega_get,
+                        link.mega_url,
+                        plan.output_dir,
+                        output_callback=output_callback,
+                    )
                 except Exception as error:
                     result = MegaCommandResult(1, "", str(error))
                 last_exit_code = result.exit_code
@@ -433,6 +439,7 @@ class RecordTreeApp:
         output: Path | None = None,
         assume_yes: bool = False,
         confirm_callback=None,
+        output_callback: Callable[[str], None] | None = None,
     ) -> ActorDownloadResult:
         records = self.list_undownloaded(actor_id=actor_id, limit=limit)
         if not records:
@@ -455,6 +462,7 @@ class RecordTreeApp:
                     assume_yes=assume_yes,
                     confirm_callback=confirm_callback,
                     only_undownloaded=True,
+                    output_callback=output_callback,
                 )
             )
         return ActorDownloadResult(
