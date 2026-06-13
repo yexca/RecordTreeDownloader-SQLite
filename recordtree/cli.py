@@ -7,7 +7,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .app import RecordTreeApp
-from .exceptions import ConfigError, NotFoundError, NotImplementedFeatureError, RecordTreeError
+from .exceptions import ConfigError, NotFoundError, NotImplementedFeatureError, RecordTreeError, ValidationError
 from .models import DoctorResult, DownloadExecutionResult, DownloadPlan, RecordDetail, RecordSummary, StatsResult
 from .search import preview_url
 from .sizes import format_bytes
@@ -21,7 +21,7 @@ console = Console()
 
 def _handle_error(error: RecordTreeError) -> None:
     console.print(f"[red]Error:[/red] {error}")
-    if isinstance(error, ConfigError):
+    if isinstance(error, (ConfigError, ValidationError)):
         raise typer.Exit(2)
     if isinstance(error, NotFoundError):
         raise typer.Exit(3)
