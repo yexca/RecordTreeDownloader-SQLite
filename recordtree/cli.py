@@ -61,11 +61,30 @@ def doctor() -> None:
 def import_command(path: Path) -> None:
     """Import a Record Tree workbook, JSON export, or legacy SQLite DB."""
     try:
-        RecordTreeApp().import_file(path)
+        result = RecordTreeApp().import_file(path)
     except NotImplementedFeatureError as error:
         console.print(f"[yellow]{error}[/yellow]")
     except RecordTreeError as error:
         _handle_error(error)
+    else:
+        table = Table(title="Import summary")
+        table.add_column("Item", style="cyan")
+        table.add_column("Value")
+        table.add_row("Import ID", str(result.import_id))
+        table.add_row("Source", str(result.source_path))
+        table.add_row("Status", result.status)
+        table.add_row("Total rows", str(result.stats.total_rows))
+        table.add_row("Inserted groups", str(result.stats.inserted_groups))
+        table.add_row("Updated groups", str(result.stats.updated_groups))
+        table.add_row("Link sets changed", str(result.stats.link_sets_changed))
+        table.add_row("Inserted links", str(result.stats.inserted_links))
+        table.add_row("Skipped links", str(result.stats.skipped_links))
+        table.add_row("Errors", str(result.stats.error_count))
+        if result.error_csv_path is not None:
+            table.add_row("Error CSV", str(result.error_csv_path))
+        if result.extra_columns:
+            table.add_row("Extra columns", ", ".join(result.extra_columns))
+        console.print(table)
 
 
 @app.command()

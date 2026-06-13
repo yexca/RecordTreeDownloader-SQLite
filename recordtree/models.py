@@ -47,6 +47,17 @@ class ImportStats:
 
 
 @dataclass(frozen=True)
+class ImportResult:
+    import_id: int
+    source_type: str
+    source_path: Path
+    status: str
+    stats: ImportStats
+    error_csv_path: Path | None = None
+    extra_columns: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class InitResult:
     config_path: Path
     database_path: Path
