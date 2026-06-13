@@ -17,23 +17,27 @@ class MegaPayload:
 
 
 def parse_mega_json(raw: object, row_number: int | None = None) -> MegaPayload:
-    text = clean_text(raw)
-    if text is None:
-        raise ImportRowError(
-            "mega_json_parse_error",
-            "MEGA JSON is empty.",
-            row_number=row_number,
-            raw_value=raw,
-        )
-    try:
-        root = json.loads(text)
-    except json.JSONDecodeError as error:
-        raise ImportRowError(
-            "mega_json_parse_error",
-            f"MEGA JSON could not be parsed: {error.msg}",
-            row_number=row_number,
-            raw_value=text,
-        ) from error
+    if isinstance(raw, dict):
+        root = raw
+        text = json.dumps(raw, ensure_ascii=False, sort_keys=True)
+    else:
+        text = clean_text(raw)
+        if text is None:
+            raise ImportRowError(
+                "mega_json_parse_error",
+                "MEGA JSON is empty.",
+                row_number=row_number,
+                raw_value=raw,
+            )
+        try:
+            root = json.loads(text)
+        except json.JSONDecodeError as error:
+            raise ImportRowError(
+                "mega_json_parse_error",
+                f"MEGA JSON could not be parsed: {error.msg}",
+                row_number=row_number,
+                raw_value=text,
+            ) from error
     if not isinstance(root, dict):
         raise ImportRowError(
             "mega_json_invalid_root",

@@ -7,6 +7,7 @@ from . import config as config_module
 from . import db
 from .exceptions import ImportRowError, NotFoundError, NotImplementedFeatureError, ValidationError
 from .importer.excel import ExcelImporter
+from .importer.json_importer import JsonImporter
 from .importer.legacy_db import LegacyDbImporter, LegacyMigrationService
 from .importer.service import ImportService, apply_upsert_result
 from .models import ImportResult, ImportStats, InitResult
@@ -64,7 +65,7 @@ class RecordTreeApp:
         status = "completed"
         try:
             with db.transaction(conn):
-                service = ImportService(conn)
+                service = ImportService(conn, prefer_xlsx_metadata=app_config.prefer_xlsx_metadata)
                 if isinstance(importer, LegacyDbImporter):
                     migration = LegacyMigrationService(conn, import_id)
                     for legacy_row in importer.iter_rows(source_path):
@@ -119,6 +120,8 @@ class RecordTreeApp:
             return "xlsx", ExcelImporter()
         if extension in {".db", ".sqlite", ".sqlite3"}:
             return "legacy_db", LegacyDbImporter()
+        if extension == ".json":
+            return "json", JsonImporter()
         raise ValidationError(f"Unsupported import file extension: {extension}")
 
 

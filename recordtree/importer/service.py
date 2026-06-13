@@ -29,11 +29,13 @@ class UpsertResult:
     link_sets_changed: int = 0
     inserted_links: int = 0
     skipped_links: int = 0
+    errors_recorded: int = 0
 
 
 class ImportService:
-    def __init__(self, conn: sqlite3.Connection) -> None:
+    def __init__(self, conn: sqlite3.Connection, prefer_xlsx_metadata: bool = True) -> None:
         self.conn = conn
+        self.prefer_xlsx_metadata = prefer_xlsx_metadata
         self.imports = ImportRepository(conn)
         self.groups = RecordGroupRepository(conn)
         self.links = LinkRepository(conn)
@@ -47,13 +49,18 @@ class ImportService:
         group = self.groups.get_group_by_source_key(source_key)
 
         if group is None:
+            if self._all_links_overlap_xlsx(import_id, record, source_key):
+                return UpsertResult(skipped_groups=1, errors_recorded=len(record.links))
             group_id = self.groups.insert_group(record, source_key, now)
             self.actors.ensure_mapping(group_id, record.actor_raw)
             self.sources.ensure_mapping(group_id, record.source_name)
-            inserted = self._insert_all_links(import_id, group_id, record, now)
-            return UpsertResult(inserted_groups=1, inserted_links=inserted)
+            inserted, errors = self._insert_all_links(import_id, group_id, record, now)
+            return UpsertResult(inserted_groups=1, inserted_links=inserted, errors_recorded=errors)
 
         group_id = int(group["id"])
+        if self._should_preserve_existing_metadata(group_id, record):
+            self.links.touch_active_links(group_id, now)
+            return UpsertResult(skipped_groups=1, skipped_links=len(record.links))
         self.groups.update_group_seen(group_id, record, now)
         self.actors.ensure_mapping(group_id, record.actor_raw)
         self.sources.ensure_mapping(group_id, record.source_name)
@@ -66,8 +73,13 @@ class ImportService:
             return UpsertResult(updated_groups=1, skipped_links=len(record.links))
 
         self.links.mark_active_links_deleted(group_id, now)
-        inserted = self._insert_all_links(import_id, group_id, record, now)
-        return UpsertResult(updated_groups=1, link_sets_changed=1, inserted_links=inserted)
+        inserted, errors = self._insert_all_links(import_id, group_id, record, now)
+        return UpsertResult(
+            updated_groups=1,
+            link_sets_changed=1,
+            inserted_links=inserted,
+            errors_recorded=errors,
+        )
 
     def record_error(self, import_id: int, error: ImportRowError) -> None:
         self.imports.add_import_error(
@@ -85,8 +97,9 @@ class ImportService:
         group_id: int,
         record: ImportRecord,
         now: str,
-    ) -> int:
+    ) -> tuple[int, int]:
         inserted = 0
+        errors = 0
         for raw_item in record.links:
             item = LinkItem(
                 link_order=raw_item.link_order,
@@ -99,6 +112,19 @@ class ImportService:
             if existing is not None and int(existing["record_group_id"]) == group_id:
                 self.links.touch_active_links(group_id, now)
                 continue
+            if existing is not None and self._should_skip_json_overlap(record, existing):
+                self.record_error(
+                    import_id,
+                    ImportRowError(
+                        "json_xlsx_overlap",
+                        f"JSON link already belongs to xlsx record_group_id={existing['record_group_id']}; xlsx metadata preserved.",
+                        row_number=record.source_row_number,
+                        source_key=build_source_key(record),
+                        raw_value=item.mega_url,
+                    ),
+                )
+                errors += 1
+                continue
             if existing is not None:
                 self.record_error(
                     import_id,
@@ -110,10 +136,61 @@ class ImportService:
                         raw_value=item.mega_url,
                     ),
                 )
+                errors += 1
                 continue
             self.links.insert_link(group_id, item, now)
             inserted += 1
-        return inserted
+        return inserted, errors
+
+    def _all_links_overlap_xlsx(self, import_id: int, record: ImportRecord, source_key: str) -> bool:
+        if not self.prefer_xlsx_metadata or record.source_type != "json" or not record.links:
+            return False
+
+        overlapping: list[tuple[LinkItem, sqlite3.Row]] = []
+        for link in record.links:
+            url = clean_text(link.mega_url)
+            if url is None:
+                return False
+            existing = self.links.find_active_link_by_url(url)
+            if existing is None or not self._row_is_xlsx_group(existing):
+                return False
+            overlapping.append((link, existing))
+
+        for link, existing in overlapping:
+            self.record_error(
+                import_id,
+                ImportRowError(
+                    "json_xlsx_overlap",
+                    f"JSON link already belongs to xlsx record_group_id={existing['record_group_id']}; xlsx metadata preserved.",
+                    row_number=record.source_row_number,
+                    source_key=source_key,
+                    raw_value=link.mega_url,
+                ),
+            )
+        return True
+
+    def _should_preserve_existing_metadata(self, group_id: int, record: ImportRecord) -> bool:
+        if not self.prefer_xlsx_metadata or record.source_type != "json":
+            return False
+        active_links = self.links.list_active_links(group_id)
+        for link in active_links:
+            if self._row_is_xlsx_group(link):
+                return True
+        return False
+
+    def _should_skip_json_overlap(self, record: ImportRecord, existing: sqlite3.Row) -> bool:
+        return (
+            self.prefer_xlsx_metadata
+            and record.source_type == "json"
+            and self._row_is_xlsx_group(existing)
+        )
+
+    def _row_is_xlsx_group(self, link: sqlite3.Row) -> bool:
+        row = self.conn.execute(
+            "SELECT source_type FROM record_groups WHERE id = ?",
+            (int(link["record_group_id"]),),
+        ).fetchone()
+        return row is not None and row["source_type"] == "xlsx"
 
     def _validate_record(self, record: ImportRecord) -> None:
         required = {
@@ -159,6 +236,7 @@ def apply_upsert_result(stats, result: UpsertResult) -> None:
     stats.link_sets_changed += result.link_sets_changed
     stats.inserted_links += result.inserted_links
     stats.skipped_links += result.skipped_links
+    stats.error_count += result.errors_recorded
 
 
 def _rows_to_link_items(rows: list[sqlite3.Row]) -> list[LinkItem]:
