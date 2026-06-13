@@ -6,22 +6,27 @@ The tool is intentionally local-first. It does not crawl remote sources, store M
 
 ## Installation
 
-Requirements:
+On Windows, the recommended setup is to run the installer script from the project root:
 
-- Python 3.11 or newer
-- MEGAcmd for downloads
-
-Install the package and dependencies:
-
-```bash
-python -m pip install -e .
+```bat
+run-install.bat
 ```
 
-For test development, install the dev extra:
+The script uses an existing Python 3.11+ installation when available. If Python is not available, it downloads Python 3.12.10 into `env/python`. Project dependencies are installed into a root `.venv` directory, which lets VS Code automatically discover the interpreter when you open this folder. Runtime config and data remain under `env/`.
 
-```bash
-python -m pip install -e ".[dev]"
+After setup, run the local CLI directly:
+
+```powershell
+.\.venv\Scripts\recordtree.exe doctor
 ```
+
+For a lightweight developer setup when Python 3 is already installed:
+
+```powershell
+.\setup_env.ps1
+```
+
+MEGAcmd is still required for downloads.
 
 ## Initialize
 

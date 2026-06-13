@@ -6,22 +6,27 @@ RecordTreeDownloader SQLite 是一个本地优先的 Python 命令行工具，�
 
 ## 安装
 
-要求：
+Windows 下推荐直接运行根目录的安装脚本：
 
-- Python 3.11 或更新版本
-- MEGAcmd，用于下载
-
-安装项目和依赖：
-
-```bash
-python -m pip install -e .
+```bat
+run-install.bat
 ```
 
-如果要运行或开发测试：
+脚本会优先使用本机已有的 Python 3.11 或更高版本；如果本机没有可用 Python，会自动把 Python 3.12.10 安装到 `env/python`。项目依赖会安装到根目录 `.venv`，方便 VS Code 打开项目时自动识别解释器；运行时配置和数据仍保存在 `env/`。
 
-```bash
-python -m pip install -e ".[dev]"
+安装完成后可以直接使用本地命令：
+
+```powershell
+.\.venv\Scripts\recordtree.exe doctor
 ```
+
+如果本机已经有 Python 3，也可以使用轻量开发环境脚本：
+
+```powershell
+.\setup_env.ps1
+```
+
+下载功能仍需要 MEGAcmd。
 
 ## 初始化
 
