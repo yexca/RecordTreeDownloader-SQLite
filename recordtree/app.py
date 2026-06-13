@@ -494,6 +494,7 @@ def _import_excel_records(
     records_by_key = {}
     duplicate_keys: set[str] = set()
     duplicate_rows = 0
+    read_total = total_rows or 0
     for record in importer.iter_records(source_path):
         stats.total_rows += 1
         if isinstance(record, ImportRowError):
@@ -519,7 +520,15 @@ def _import_excel_records(
     importer.duplicate_source_keys = len(duplicate_keys)
     importer.duplicate_rows_merged = duplicate_rows
     write_total = len(records_by_key)
-    _report_import_progress(progress_callback, source_type, source_path, 0, write_total, "Writing")
+    combined_total = read_total + write_total if total_rows is not None else None
+    _report_import_progress(
+        progress_callback,
+        source_type,
+        source_path,
+        stats.total_rows,
+        combined_total,
+        "Writing",
+    )
     written = 0
     for record in records_by_key.values():
         try:
@@ -530,7 +539,14 @@ def _import_excel_records(
         else:
             apply_upsert_result(stats, result)
         written += 1
-        _report_import_progress(progress_callback, source_type, source_path, written, write_total, "Writing")
+        _report_import_progress(
+            progress_callback,
+            source_type,
+            source_path,
+            stats.total_rows + written,
+            combined_total,
+            "Writing",
+        )
 
 
 def _merge_import_records(first, second):

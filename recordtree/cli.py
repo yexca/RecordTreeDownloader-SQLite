@@ -34,8 +34,8 @@ class RowCountColumn(ProgressColumn):
     def render(self, task: Task) -> Text:
         completed = int(task.completed)
         if task.total is None:
-            return Text(f"{completed} rows")
-        return Text(f"{completed}/{int(task.total)} rows")
+            return Text(f"{completed} steps")
+        return Text(f"{completed}/{int(task.total)} steps")
 
 
 def _handle_error(error: RecordTreeError) -> None:

@@ -221,10 +221,10 @@ def test_import_file_reports_progress(tmp_path: Path, monkeypatch) -> None:
         ("Reading", 2, 4),
         ("Reading", 3, 4),
         ("Reading", 4, 4),
-        ("Writing", 0, 3),
-        ("Writing", 1, 3),
-        ("Writing", 2, 3),
-        ("Writing", 3, 3),
+        ("Writing", 4, 7),
+        ("Writing", 5, 7),
+        ("Writing", 6, 7),
+        ("Writing", 7, 7),
     ]
 
 
