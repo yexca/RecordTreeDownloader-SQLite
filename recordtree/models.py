@@ -52,6 +52,7 @@ class ImportProgress:
     source_path: Path
     completed_rows: int
     total_rows: int | None = None
+    phase: str = "Importing"
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,7 @@ class ImportResult:
     stats: ImportStats
     error_csv_path: Path | None = None
     extra_columns: tuple[str, ...] = ()
+    notes: str | None = None
 
 
 @dataclass(frozen=True)

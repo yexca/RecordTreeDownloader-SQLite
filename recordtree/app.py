@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 from . import config as config_module
@@ -21,12 +22,14 @@ from .models import (
     ImportResult,
     ImportProgress,
     ImportStats,
+    LinkItem,
     InitResult,
     MegaCommandResult,
     RecordDetail,
     RecordSummary,
     StatsResult,
 )
+from .normalizers import build_source_key, clean_text, normalize_file_type
 from .repositories import DownloadRepository, ImportRepository
 from .search import SearchService
 
@@ -137,9 +140,10 @@ class RecordTreeApp:
         stats = ImportStats()
         error_csv_path: Path | None = None
         status = "completed"
+        notes: str | None = None
         try:
             total_rows = _count_import_rows(importer, source_path)
-            _report_import_progress(progress_callback, source_type, source_path, stats, total_rows)
+            _report_import_progress(progress_callback, source_type, source_path, 0, total_rows, "Importing")
             with db.transaction(conn):
                 service = ImportService(conn, prefer_xlsx_metadata=app_config.prefer_xlsx_metadata)
                 if isinstance(importer, LegacyDbImporter):
@@ -147,7 +151,25 @@ class RecordTreeApp:
                     for legacy_row in importer.iter_rows(source_path):
                         stats.total_rows += 1
                         migration.migrate_row(legacy_row, stats)
-                        _report_import_progress(progress_callback, source_type, source_path, stats, total_rows)
+                        _report_import_progress(
+                            progress_callback,
+                            source_type,
+                            source_path,
+                            stats.total_rows,
+                            total_rows,
+                            "Importing",
+                        )
+                elif isinstance(importer, ExcelImporter):
+                    _import_excel_records(
+                        importer,
+                        source_path,
+                        service,
+                        import_id,
+                        stats,
+                        progress_callback,
+                        total_rows,
+                        source_type,
+                    )
                 else:
                     for record in importer.iter_records(source_path):
                         stats.total_rows += 1
@@ -162,13 +184,21 @@ class RecordTreeApp:
                                 stats.error_count += 1
                             else:
                                 apply_upsert_result(stats, result)
-                        _report_import_progress(progress_callback, source_type, source_path, stats, total_rows)
+                        _report_import_progress(
+                            progress_callback,
+                            source_type,
+                            source_path,
+                            stats.total_rows,
+                            total_rows,
+                            "Importing",
+                        )
                 status = "completed_with_errors" if stats.error_count else "completed"
+                notes = _import_notes(importer)
                 import_repo.finish_import(
                     import_id,
                     stats,
                     status,
-                    notes=_extra_columns_note(getattr(importer, "extra_columns", ())),
+                    notes=notes,
                 )
             if stats.error_count:
                 error_csv_path = _export_import_errors(conn, import_id, app_config.logs_dir)
@@ -187,6 +217,7 @@ class RecordTreeApp:
             stats=stats,
             error_csv_path=error_csv_path,
             extra_columns=tuple(getattr(importer, "extra_columns", ())),
+            notes=notes,
         )
 
     def stats(self) -> StatsResult:
@@ -450,6 +481,93 @@ class RecordTreeApp:
         return conn
 
 
+def _import_excel_records(
+    importer: ExcelImporter,
+    source_path: Path,
+    service: ImportService,
+    import_id: int,
+    stats: ImportStats,
+    progress_callback: Callable[[ImportProgress], None] | None,
+    total_rows: int | None,
+    source_type: str,
+) -> None:
+    records_by_key = {}
+    duplicate_keys: set[str] = set()
+    duplicate_rows = 0
+    for record in importer.iter_records(source_path):
+        stats.total_rows += 1
+        if isinstance(record, ImportRowError):
+            service.record_error(import_id, record)
+            stats.error_count += 1
+        else:
+            source_key = build_source_key(record)
+            if source_key in records_by_key:
+                duplicate_keys.add(source_key)
+                duplicate_rows += 1
+                records_by_key[source_key] = _merge_import_records(records_by_key[source_key], record)
+            else:
+                records_by_key[source_key] = record
+        _report_import_progress(
+            progress_callback,
+            source_type,
+            source_path,
+            stats.total_rows,
+            total_rows,
+            "Reading",
+        )
+
+    importer.duplicate_source_keys = len(duplicate_keys)
+    importer.duplicate_rows_merged = duplicate_rows
+    write_total = len(records_by_key)
+    _report_import_progress(progress_callback, source_type, source_path, 0, write_total, "Writing")
+    written = 0
+    for record in records_by_key.values():
+        try:
+            result = service.upsert_record(import_id, record)
+        except ImportRowError as error:
+            service.record_error(import_id, error)
+            stats.error_count += 1
+        else:
+            apply_upsert_result(stats, result)
+        written += 1
+        _report_import_progress(progress_callback, source_type, source_path, written, write_total, "Writing")
+
+
+def _merge_import_records(first, second):
+    links_by_key = {}
+    for link in first.links + second.links:
+        key = clean_text(link.mega_url)
+        if key is None or key in links_by_key:
+            continue
+        links_by_key[key] = link
+    merged_links = [
+        LinkItem(
+            link_order=index,
+            mega_url=link.mega_url,
+            file_type=normalize_file_type(link.file_type),
+            size_bytes=link.size_bytes,
+            formatted_size=clean_text(link.formatted_size),
+        )
+        for index, link in enumerate(links_by_key.values(), start=1)
+    ]
+    return replace(first, links=merged_links)
+
+
+def _import_notes(importer) -> str | None:
+    notes: list[str] = []
+    extra_note = _extra_columns_note(getattr(importer, "extra_columns", ()))
+    if extra_note is not None:
+        notes.append(extra_note)
+    duplicate_source_keys = getattr(importer, "duplicate_source_keys", 0)
+    duplicate_rows_merged = getattr(importer, "duplicate_rows_merged", 0)
+    if duplicate_rows_merged:
+        notes.append(
+            f"Duplicate Excel records merged: {duplicate_source_keys} source keys, "
+            f"{duplicate_rows_merged} extra rows"
+        )
+    return "; ".join(notes) if notes else None
+
+
 def _extra_columns_note(extra_columns: tuple[str, ...]) -> str | None:
     if not extra_columns:
         return None
@@ -468,8 +586,9 @@ def _report_import_progress(
     progress_callback: Callable[[ImportProgress], None] | None,
     source_type: str,
     source_path: Path,
-    stats: ImportStats,
+    completed_rows: int,
     total_rows: int | None,
+    phase: str,
 ) -> None:
     if progress_callback is None:
         return
@@ -477,8 +596,9 @@ def _report_import_progress(
         ImportProgress(
             source_type=source_type,
             source_path=source_path,
-            completed_rows=stats.total_rows,
+            completed_rows=completed_rows,
             total_rows=total_rows,
+            phase=phase,
         )
     )
 

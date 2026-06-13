@@ -102,11 +102,10 @@ def import_command(path: Path) -> None:
                     task_id,
                     completed=event.completed_rows,
                     total=event.total_rows,
-                    description=f"Importing {event.source_type}",
+                    description=f"{event.phase} {event.source_type}",
                 )
 
             result = RecordTreeApp().import_file(path, progress_callback=update_progress)
-            progress.update(task_id, completed=result.stats.total_rows, total=result.stats.total_rows)
     except NotImplementedFeatureError as error:
         console.print(f"[yellow]{error}[/yellow]")
     except RecordTreeError as error:
@@ -129,6 +128,8 @@ def import_command(path: Path) -> None:
             table.add_row("Error CSV", str(result.error_csv_path))
         if result.extra_columns:
             table.add_row("Extra columns", ", ".join(result.extra_columns))
+        if result.notes:
+            table.add_row("Notes", result.notes)
         console.print(table)
 
 

@@ -120,6 +120,39 @@ def _write_workbook(path: Path, headers: list[str] | None = None) -> None:
     workbook.save(path)
 
 
+def _write_duplicate_workbook(path: Path) -> None:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(HEADERS)
+    base = [
+        "Actor A",
+        "2026-01-02",
+        "Duplicate title",
+        "2026-01-03",
+        "note",
+        "Duplicate upload",
+        "",
+        "Source A",
+    ]
+    sheet.append(
+        base
+        + [
+            _mega({"Link": "https://example.invalid/duplicate/1", "Size": 1024, "FormattedSize": "1 KB", "Type": "mp4"}),
+            "1 KB",
+            "extra",
+        ]
+    )
+    sheet.append(
+        base
+        + [
+            _mega({"Link": "https://example.invalid/duplicate/2", "Size": 2048, "FormattedSize": "2 KB", "Type": "mp4"}),
+            "2 KB",
+            "extra",
+        ]
+    )
+    workbook.save(path)
+
+
 def test_excel_import_records_errors_and_is_idempotent(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     RecordTreeApp().init()
@@ -175,11 +208,56 @@ def test_import_file_reports_progress(tmp_path: Path, monkeypatch) -> None:
     RecordTreeApp().init()
     workbook_path = tmp_path / "fixture.xlsx"
     _write_workbook(workbook_path, REAL_XLSX_HEADERS)
-    events: list[tuple[int, int | None]] = []
+    events: list[tuple[str, int, int | None]] = []
 
     RecordTreeApp().import_file(
         workbook_path,
-        progress_callback=lambda event: events.append((event.completed_rows, event.total_rows)),
+        progress_callback=lambda event: events.append((event.phase, event.completed_rows, event.total_rows)),
     )
 
-    assert events == [(0, 4), (1, 4), (2, 4), (3, 4), (4, 4)]
+    assert events == [
+        ("Importing", 0, 4),
+        ("Reading", 1, 4),
+        ("Reading", 2, 4),
+        ("Reading", 3, 4),
+        ("Reading", 4, 4),
+        ("Writing", 0, 3),
+        ("Writing", 1, 3),
+        ("Writing", 2, 3),
+        ("Writing", 3, 3),
+    ]
+
+
+def test_excel_duplicate_source_keys_merge_links_and_reimport_is_idempotent(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    RecordTreeApp().init()
+    workbook_path = tmp_path / "duplicates.xlsx"
+    _write_duplicate_workbook(workbook_path)
+
+    first = RecordTreeApp().import_file(workbook_path)
+    second = RecordTreeApp().import_file(workbook_path)
+
+    assert first.stats.total_rows == 2
+    assert first.stats.inserted_groups == 1
+    assert first.stats.inserted_links == 2
+    assert first.stats.link_sets_changed == 0
+
+    assert second.stats.total_rows == 2
+    assert second.stats.inserted_groups == 0
+    assert second.stats.updated_groups == 1
+    assert second.stats.skipped_links == 2
+    assert second.stats.link_sets_changed == 0
+    assert second.stats.inserted_links == 0
+
+    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM record_groups").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM download_links WHERE is_deleted = 0").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM download_links WHERE is_deleted = 1").fetchone()[0] == 0
+        notes = conn.execute("SELECT notes FROM imports WHERE id = ?", (first.import_id,)).fetchone()[0]
+        assert "Duplicate Excel records merged: 1 source keys, 1 extra rows" in notes
+    finally:
+        conn.close()

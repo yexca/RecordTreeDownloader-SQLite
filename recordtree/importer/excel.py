@@ -43,6 +43,8 @@ REQUIRED_FIELDS = {
 class ExcelImporter:
     def __init__(self) -> None:
         self.extra_columns: tuple[str, ...] = ()
+        self.duplicate_source_keys = 0
+        self.duplicate_rows_merged = 0
 
     def count_records(self, path: Path) -> int:
         workbook = load_workbook(path, read_only=True, data_only=True)
