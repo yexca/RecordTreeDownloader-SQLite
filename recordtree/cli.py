@@ -4,6 +4,8 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.progress import BarColumn, Progress, ProgressColumn, Task, TaskProgressColumn, TextColumn, TimeElapsedColumn
+from rich.text import Text
 from rich.table import Table
 
 from .app import RecordTreeApp
@@ -13,6 +15,7 @@ from .models import (
     DoctorResult,
     DownloadExecutionResult,
     DownloadPlan,
+    ImportProgress,
     RecordDetail,
     RecordSummary,
     StatsResult,
@@ -25,6 +28,14 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 console = Console()
+
+
+class RowCountColumn(ProgressColumn):
+    def render(self, task: Task) -> Text:
+        completed = int(task.completed)
+        if task.total is None:
+            return Text(f"{completed} rows")
+        return Text(f"{completed}/{int(task.total)} rows")
 
 
 def _handle_error(error: RecordTreeError) -> None:
@@ -76,7 +87,26 @@ def doctor() -> None:
 def import_command(path: Path) -> None:
     """Import a Record Tree workbook, JSON export, or legacy SQLite DB."""
     try:
-        result = RecordTreeApp().import_file(path)
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            RowCountColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task_id = progress.add_task("Importing", total=None)
+
+            def update_progress(event: ImportProgress) -> None:
+                progress.update(
+                    task_id,
+                    completed=event.completed_rows,
+                    total=event.total_rows,
+                    description=f"Importing {event.source_type}",
+                )
+
+            result = RecordTreeApp().import_file(path, progress_callback=update_progress)
+            progress.update(task_id, completed=result.stats.total_rows, total=result.stats.total_rows)
     except NotImplementedFeatureError as error:
         console.print(f"[yellow]{error}[/yellow]")
     except RecordTreeError as error:

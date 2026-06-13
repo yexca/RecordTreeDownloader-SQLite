@@ -14,7 +14,7 @@ from .parsers import parse_mega_json
 
 
 HEADER_ALIASES = {
-    "actor_raw": {"actor_raw", "actor", "演员", "澹颁紭"},
+    "actor_raw": {"actor_raw", "actor", "演员", "声优", "澹颁紭"},
     "delivery_date": {"delivery_date", "配信日期", "閰嶄俊鏃ユ湡"},
     "title": {"title", "标题", "鏍囬"},
     "entry_date": {"entry_date", "录入日期", "褰曞叆鏃ユ湡"},
@@ -43,6 +43,16 @@ REQUIRED_FIELDS = {
 class ExcelImporter:
     def __init__(self) -> None:
         self.extra_columns: tuple[str, ...] = ()
+
+    def count_records(self, path: Path) -> int:
+        workbook = load_workbook(path, read_only=True, data_only=True)
+        try:
+            sheet = workbook.active
+            if sheet.max_row is None:
+                return 0
+            return max(sheet.max_row - 1, 0)
+        finally:
+            workbook.close()
 
     def iter_records(self, path: Path) -> Iterator[ImportRecord | ImportRowError]:
         workbook = load_workbook(path, read_only=True, data_only=True)

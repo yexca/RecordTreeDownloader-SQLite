@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from collections.abc import Callable
 from pathlib import Path
 
 from . import config as config_module
@@ -18,6 +19,7 @@ from .models import (
     DownloadExecutionResult,
     DownloadPlan,
     ImportResult,
+    ImportProgress,
     ImportStats,
     InitResult,
     MegaCommandResult,
@@ -113,7 +115,11 @@ class RecordTreeApp:
 
         return DoctorResult(checks)
 
-    def import_file(self, path: Path) -> ImportResult:
+    def import_file(
+        self,
+        path: Path,
+        progress_callback: Callable[[ImportProgress], None] | None = None,
+    ) -> ImportResult:
         source_path = path.expanduser().resolve()
         if not source_path.exists():
             raise NotFoundError(f"Import source does not exist: {source_path}")
@@ -132,6 +138,8 @@ class RecordTreeApp:
         error_csv_path: Path | None = None
         status = "completed"
         try:
+            total_rows = _count_import_rows(importer, source_path)
+            _report_import_progress(progress_callback, source_type, source_path, stats, total_rows)
             with db.transaction(conn):
                 service = ImportService(conn, prefer_xlsx_metadata=app_config.prefer_xlsx_metadata)
                 if isinstance(importer, LegacyDbImporter):
@@ -139,20 +147,22 @@ class RecordTreeApp:
                     for legacy_row in importer.iter_rows(source_path):
                         stats.total_rows += 1
                         migration.migrate_row(legacy_row, stats)
+                        _report_import_progress(progress_callback, source_type, source_path, stats, total_rows)
                 else:
                     for record in importer.iter_records(source_path):
                         stats.total_rows += 1
                         if isinstance(record, ImportRowError):
                             service.record_error(import_id, record)
                             stats.error_count += 1
-                            continue
-                        try:
-                            result = service.upsert_record(import_id, record)
-                        except ImportRowError as error:
-                            service.record_error(import_id, error)
-                            stats.error_count += 1
                         else:
-                            apply_upsert_result(stats, result)
+                            try:
+                                result = service.upsert_record(import_id, record)
+                            except ImportRowError as error:
+                                service.record_error(import_id, error)
+                                stats.error_count += 1
+                            else:
+                                apply_upsert_result(stats, result)
+                        _report_import_progress(progress_callback, source_type, source_path, stats, total_rows)
                 status = "completed_with_errors" if stats.error_count else "completed"
                 import_repo.finish_import(
                     import_id,
@@ -444,6 +454,33 @@ def _extra_columns_note(extra_columns: tuple[str, ...]) -> str | None:
     if not extra_columns:
         return None
     return "Extra Excel columns ignored: " + ", ".join(extra_columns)
+
+
+def _count_import_rows(importer, source_path: Path) -> int | None:
+    if hasattr(importer, "count_records"):
+        return importer.count_records(source_path)
+    if hasattr(importer, "count_rows"):
+        return importer.count_rows(source_path)
+    return None
+
+
+def _report_import_progress(
+    progress_callback: Callable[[ImportProgress], None] | None,
+    source_type: str,
+    source_path: Path,
+    stats: ImportStats,
+    total_rows: int | None,
+) -> None:
+    if progress_callback is None:
+        return
+    progress_callback(
+        ImportProgress(
+            source_type=source_type,
+            source_path=source_path,
+            completed_rows=stats.total_rows,
+            total_rows=total_rows,
+        )
+    )
 
 
 def _export_import_errors(conn, import_id: int, logs_dir: Path) -> Path:

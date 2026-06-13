@@ -23,6 +23,20 @@ HEADERS = [
     "ignored_extra",
 ]
 
+REAL_XLSX_HEADERS = [
+    "声优",
+    "配信日期",
+    "标题",
+    "录入日期",
+    "备注",
+    "上传标题",
+    "重复检索",
+    "来源",
+    "MEGA",
+    "容量",
+    "ignored_extra",
+]
+
 
 def _mega(*links: dict[str, object]) -> str:
     return json.dumps(
@@ -36,10 +50,10 @@ def _mega(*links: dict[str, object]) -> str:
     )
 
 
-def _write_workbook(path: Path) -> None:
+def _write_workbook(path: Path, headers: list[str] | None = None) -> None:
     workbook = Workbook()
     sheet = workbook.active
-    sheet.append(HEADERS)
+    sheet.append(headers or HEADERS)
     sheet.append(
         [
             "Actor A",
@@ -141,3 +155,31 @@ def test_excel_import_records_errors_and_is_idempotent(tmp_path: Path, monkeypat
         )
     finally:
         conn.close()
+
+
+def test_excel_import_accepts_real_chinese_headers(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    RecordTreeApp().init()
+    workbook_path = tmp_path / "fixture.xlsx"
+    _write_workbook(workbook_path, REAL_XLSX_HEADERS)
+
+    result = RecordTreeApp().import_file(workbook_path)
+
+    assert result.stats.total_rows == 4
+    assert result.stats.inserted_groups == 3
+    assert result.extra_columns == ("ignored_extra",)
+
+
+def test_import_file_reports_progress(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    RecordTreeApp().init()
+    workbook_path = tmp_path / "fixture.xlsx"
+    _write_workbook(workbook_path, REAL_XLSX_HEADERS)
+    events: list[tuple[int, int | None]] = []
+
+    RecordTreeApp().import_file(
+        workbook_path,
+        progress_callback=lambda event: events.append((event.completed_rows, event.total_rows)),
+    )
+
+    assert events == [(0, 4), (1, 4), (2, 4), (3, 4), (4, 4)]

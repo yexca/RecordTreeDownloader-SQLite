@@ -47,6 +47,14 @@ class ImportStats:
 
 
 @dataclass(frozen=True)
+class ImportProgress:
+    source_type: str
+    source_path: Path
+    completed_rows: int
+    total_rows: int | None = None
+
+
+@dataclass(frozen=True)
 class ImportResult:
     import_id: int
     source_type: str

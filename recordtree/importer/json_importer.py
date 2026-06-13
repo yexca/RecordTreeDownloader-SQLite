@@ -14,13 +14,19 @@ from .parsers import parse_mega_json
 class JsonImporter:
     extra_columns: tuple[str, ...] = ()
 
+    def count_records(self, path: Path) -> int:
+        root = _load_json_root(path)
+        total = 0
+        for author_item in root:
+            if not isinstance(author_item, dict):
+                total += 1
+                continue
+            records = author_item.get("records")
+            total += len(records) if isinstance(records, list) else 1
+        return total
+
     def iter_records(self, path: Path) -> Iterator[ImportRecord | ImportRowError]:
-        try:
-            root = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as error:
-            raise ValidationError(f"JSON file could not be parsed: {error.msg}") from error
-        if not isinstance(root, list):
-            raise ValidationError("JSON root must be a list.")
+        root = _load_json_root(path)
 
         for author_index, author_item in enumerate(root, start=1):
             if not isinstance(author_item, dict):
@@ -93,3 +99,13 @@ def _parse_record(record_item: dict[str, object], actor: str | None, row_number:
 
 def _row_number(author_index: int, record_index: int) -> int:
     return author_index * 100000 + record_index
+
+
+def _load_json_root(path: Path) -> list[object]:
+    try:
+        root = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise ValidationError(f"JSON file could not be parsed: {error.msg}") from error
+    if not isinstance(root, list):
+        raise ValidationError("JSON root must be a list.")
+    return root

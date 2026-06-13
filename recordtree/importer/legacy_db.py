@@ -45,6 +45,23 @@ class LegacyRow:
 
 
 class LegacyDbImporter:
+    def count_rows(self, path: Path) -> int:
+        source_conn = sqlite3.connect(path)
+        source_conn.row_factory = sqlite3.Row
+        try:
+            validate_legacy_schema(source_conn)
+            return int(
+                source_conn.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM record r
+                    JOIN author a ON a.author_id = r.author_id
+                    """
+                ).fetchone()[0]
+            )
+        finally:
+            source_conn.close()
+
     def iter_rows(self, path: Path):
         source_conn = sqlite3.connect(path)
         source_conn.row_factory = sqlite3.Row
