@@ -12,6 +12,7 @@ from .importer.json_importer import JsonImporter
 from .importer.legacy_db import LegacyDbImporter, LegacyMigrationService
 from .importer.service import ImportService, apply_upsert_result
 from .models import (
+    ActorDownloadResult,
     DoctorCheck,
     DoctorResult,
     DownloadExecutionResult,
@@ -223,10 +224,11 @@ class RecordTreeApp:
         actor: str | None = None,
         source: str | None = None,
         limit: int = 50,
+        actor_id: int | None = None,
     ) -> list[RecordSummary]:
         conn = self._open_app_db()
         try:
-            return SearchService(conn).list_undownloaded(actor, source, limit)
+            return SearchService(conn).list_undownloaded(actor=actor, actor_id=actor_id, source=source, limit=limit)
         finally:
             conn.close()
 
@@ -243,6 +245,7 @@ class RecordTreeApp:
         include_par2: bool = False,
         types: str | None = None,
         output: Path | None = None,
+        only_undownloaded: bool = False,
     ) -> DownloadPlan:
         app_config = config_module.load_config(Path("env/config.toml"))
         conn = self._open_app_db()
@@ -256,6 +259,7 @@ class RecordTreeApp:
                 output_dir=output,
                 safety_margin_percent=app_config.safety_margin_percent,
                 safety_margin_min_mb=app_config.safety_margin_min_mb,
+                only_undownloaded=only_undownloaded,
             )
         finally:
             conn.close()
@@ -268,9 +272,10 @@ class RecordTreeApp:
         output: Path | None = None,
         assume_yes: bool = False,
         confirm_callback=None,
+        only_undownloaded: bool = False,
     ) -> DownloadExecutionResult:
         app_config = config_module.load_config(Path("env/config.toml"))
-        plan = self.build_download_plan(record_id_or_key, include_par2, types, output)
+        plan = self.build_download_plan(record_id_or_key, include_par2, types, output, only_undownloaded)
         conn = self._open_app_db()
         downloads = DownloadRepository(conn)
         try:
@@ -377,6 +382,45 @@ class RecordTreeApp:
             raise
         finally:
             conn.close()
+
+    def download_actor(
+        self,
+        actor_id: int,
+        limit: int = 3,
+        include_par2: bool = False,
+        types: str | None = None,
+        output: Path | None = None,
+        assume_yes: bool = False,
+        confirm_callback=None,
+    ) -> ActorDownloadResult:
+        records = self.list_undownloaded(actor_id=actor_id, limit=limit)
+        if not records:
+            return ActorDownloadResult(
+                actor_id=actor_id,
+                selected_count=0,
+                results=[],
+                message=f"No undownloaded records found for actor id {actor_id}.",
+            )
+
+        results: list[DownloadExecutionResult] = []
+        for record in records:
+            record_output = (output / str(record.id)) if output is not None else None
+            results.append(
+                self.download(
+                    str(record.id),
+                    include_par2=include_par2,
+                    types=types,
+                    output=record_output,
+                    assume_yes=assume_yes,
+                    confirm_callback=confirm_callback,
+                    only_undownloaded=True,
+                )
+            )
+        return ActorDownloadResult(
+            actor_id=actor_id,
+            selected_count=len(records),
+            results=results,
+        )
 
     def _create_importer(self, path: Path):
         extension = path.suffix.casefold()

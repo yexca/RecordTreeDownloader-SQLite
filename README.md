@@ -70,6 +70,7 @@ recordtree search-source niconico
 recordtree search-title ASMR
 recordtree search-date --from 2026-01-01 --to 2026-01-31
 recordtree list-undownloaded --limit 20
+recordtree list-undownloaded --actor-id 12 --limit 20
 recordtree info 123
 recordtree stats
 ```
@@ -96,9 +97,10 @@ Download examples:
 recordtree download 123 --types mp4,m4a
 recordtree download 123 --include-par2 --yes
 recordtree download 123 --output "D:/RecordTree/123"
+recordtree download --actor 12 --count 5 --yes
 ```
 
-By default, `.par2` files are excluded. Use `--include-par2` to include them. The downloader checks MEGAcmd availability, login status, selected byte count, and free disk space before running `mega-get`.
+By default, `.par2` files are excluded. Use `--include-par2` to include them. Actor downloads select up to three undownloaded records by default; use `--count` or `--limit` to choose another number. The downloader checks MEGAcmd availability, login status, selected byte count, and free disk space before running `mega-get`.
 
 ## Troubleshooting
 
@@ -109,6 +111,7 @@ recordtree doctor
 recordtree stats
 recordtree info <id>
 recordtree list-undownloaded --limit 20
+recordtree list-undownloaded --actor-id <actor-id>
 ```
 
 Common failures:

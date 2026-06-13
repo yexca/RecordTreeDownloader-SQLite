@@ -8,7 +8,15 @@ from rich.table import Table
 
 from .app import RecordTreeApp
 from .exceptions import ConfigError, NotFoundError, NotImplementedFeatureError, RecordTreeError, ValidationError
-from .models import DoctorResult, DownloadExecutionResult, DownloadPlan, RecordDetail, RecordSummary, StatsResult
+from .models import (
+    ActorDownloadResult,
+    DoctorResult,
+    DownloadExecutionResult,
+    DownloadPlan,
+    RecordDetail,
+    RecordSummary,
+    StatsResult,
+)
 from .search import preview_url
 from .sizes import format_bytes
 
@@ -155,15 +163,17 @@ def search_date(
         _print_record_rows("Date search", rows)
 
 
+@app.command(name="list-undownload")
 @app.command(name="list-undownloaded")
 def list_undownloaded(
     actor: str | None = None,
+    actor_id: int | None = typer.Option(None, "--actor-id"),
     source: str | None = None,
     limit: int = 50,
 ) -> None:
     """List records with active links not marked completed."""
     try:
-        rows = RecordTreeApp().list_undownloaded(actor, source, limit)
+        rows = RecordTreeApp().list_undownloaded(actor=actor, actor_id=actor_id, source=source, limit=limit)
     except RecordTreeError as error:
         _handle_error(error)
     else:
@@ -183,7 +193,9 @@ def info(record_id_or_key: str) -> None:
 
 @app.command()
 def download(
-    record_id_or_key: str,
+    record_id_or_key: str | None = typer.Argument(None),
+    actor: int | None = typer.Option(None, "--actor", "-actor"),
+    count: int = typer.Option(3, "--count", "--limit"),
     include_par2: bool = typer.Option(False, "--include-par2"),
     types: str | None = typer.Option(None, "--types"),
     output: Path | None = typer.Option(None, "--output"),
@@ -197,17 +209,40 @@ def download(
         return typer.confirm("Continue with download?")
 
     try:
-        result = app_service.download(
-            record_id_or_key,
-            include_par2=include_par2,
-            types=types,
-            output=output,
-            assume_yes=yes,
-            confirm_callback=None if yes else confirm,
-        )
+        if record_id_or_key is None and actor is None:
+            raise ValidationError("download requires a record id or --actor.")
+        if record_id_or_key is not None and actor is not None:
+            raise ValidationError("Use either a record id or --actor, not both.")
+        if actor is not None:
+            result = app_service.download_actor(
+                actor,
+                limit=count,
+                include_par2=include_par2,
+                types=types,
+                output=output,
+                assume_yes=yes,
+                confirm_callback=None if yes else confirm,
+            )
+        else:
+            result = app_service.download(
+                record_id_or_key,
+                include_par2=include_par2,
+                types=types,
+                output=output,
+                assume_yes=yes,
+                confirm_callback=None if yes else confirm,
+            )
     except RecordTreeError as error:
         _handle_error(error)
     else:
+        if isinstance(result, ActorDownloadResult):
+            _print_actor_download_result(result)
+            statuses = {item.status for item in result.results}
+            if "blocked" in statuses:
+                raise typer.Exit(5)
+            if "failed" in statuses:
+                raise typer.Exit(10)
+            return
         _print_download_result(result)
         if result.status == "blocked":
             raise typer.Exit(5)
@@ -376,4 +411,28 @@ def _print_download_result(result: DownloadExecutionResult) -> None:
     table.add_row("Output", str(result.output_dir))
     if result.message:
         table.add_row("Message", result.message)
+    console.print(table)
+
+
+def _print_actor_download_result(result: ActorDownloadResult) -> None:
+    if result.message:
+        console.print(f"[yellow]{result.message}[/yellow]")
+        return
+
+    table = Table(title="Actor download summary")
+    table.add_column("Record group", style="cyan")
+    table.add_column("Download ID")
+    table.add_column("Status")
+    table.add_column("Completed")
+    table.add_column("Failed")
+    table.add_column("Output")
+    for item in result.results:
+        table.add_row(
+            str(item.record_group_id),
+            str(item.download_id),
+            item.status,
+            str(item.completed),
+            str(item.failed),
+            str(item.output_dir),
+        )
     console.print(table)

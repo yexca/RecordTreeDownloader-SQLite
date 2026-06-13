@@ -99,6 +99,7 @@ class SearchService:
         actor: str | None = None,
         source: str | None = None,
         limit: int = DEFAULT_LIMIT,
+        actor_id: int | None = None,
     ) -> list[RecordSummary]:
         clauses = [
             "rg.is_deleted = 0",
@@ -131,6 +132,19 @@ class SearchService:
                 """
             )
             params.append(f"%{normalize_search_text(actor)}%")
+        if actor_id is not None:
+            self._require_actor(actor_id)
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM record_group_actors rga
+                    WHERE rga.record_group_id = rg.id
+                      AND rga.actor_id = ?
+                )
+                """
+            )
+            params.append(actor_id)
         if source:
             clauses.append(
                 """
@@ -225,6 +239,7 @@ class SearchService:
         output_dir: Path | None,
         safety_margin_percent: int,
         safety_margin_min_mb: int,
+        only_undownloaded: bool = False,
     ) -> DownloadPlan:
         detail = self.get_info(record_id_or_key)
         links = [
@@ -237,6 +252,7 @@ class SearchService:
                 formatted_size=link.formatted_size,
             )
             for link in detail.links
+            if not only_undownloaded or link.status not in {"completed", "legacy_completed"}
         ]
         should_include_par2 = include_par2 or include_par2_by_default
         if not should_include_par2:
@@ -415,6 +431,13 @@ class SearchService:
             "active_count": int(row["active_count"]),
             "completed_count": int(row["completed_count"]),
         }
+
+    def _require_actor(self, actor_id: int) -> None:
+        if actor_id < 1:
+            raise ValidationError("Actor id must be at least 1.")
+        row = self.conn.execute("SELECT 1 FROM actors WHERE id = ?", (actor_id,)).fetchone()
+        if row is None:
+            raise NotFoundError(f"Actor not found: {actor_id}")
 
 
 def normalize_limit(limit: int) -> int:

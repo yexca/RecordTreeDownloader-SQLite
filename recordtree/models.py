@@ -212,3 +212,11 @@ class DownloadExecutionResult:
     failed: int
     output_dir: Path
     message: str | None = None
+
+
+@dataclass(frozen=True)
+class ActorDownloadResult:
+    actor_id: int
+    selected_count: int
+    results: list[DownloadExecutionResult]
+    message: str | None = None

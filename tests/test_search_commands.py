@@ -149,6 +149,19 @@ def test_search_and_info_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert {row.title for row in undownloaded} == {"ASMR sleep", "Talk"}
     assert app.list_undownloaded(source="rplay")[0].title == "Talk"
 
+    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    try:
+        actor_a_id = int(
+            conn.execute("SELECT id FROM actors WHERE name = ?", ("Actor A",)).fetchone()[0]
+        )
+        actor_b_id = int(
+            conn.execute("SELECT id FROM actors WHERE name = ?", ("Actor B",)).fetchone()[0]
+        )
+    finally:
+        conn.close()
+    assert [row.title for row in app.list_undownloaded(actor_id=actor_a_id)] == ["ASMR sleep"]
+    assert app.list_undownloaded(actor_id=actor_b_id) == []
+
     detail = app.info(str(groups["ASMR sleep"]))
     assert detail.downloaded == "partial"
     assert detail.active_links == 2
