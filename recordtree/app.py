@@ -5,13 +5,26 @@ from pathlib import Path
 
 from . import config as config_module
 from . import db
-from .exceptions import ConfigError, ImportRowError, NotFoundError, NotImplementedFeatureError, ValidationError
+from . import mega
+from .exceptions import ConfigError, ExternalToolError, ImportRowError, NotFoundError, NotImplementedFeatureError, ValidationError
 from .importer.excel import ExcelImporter
 from .importer.json_importer import JsonImporter
 from .importer.legacy_db import LegacyDbImporter, LegacyMigrationService
 from .importer.service import ImportService, apply_upsert_result
-from .models import ImportResult, ImportStats, InitResult, RecordDetail, RecordSummary, StatsResult
-from .repositories import ImportRepository
+from .models import (
+    DoctorCheck,
+    DoctorResult,
+    DownloadExecutionResult,
+    DownloadPlan,
+    ImportResult,
+    ImportStats,
+    InitResult,
+    MegaCommandResult,
+    RecordDetail,
+    RecordSummary,
+    StatsResult,
+)
+from .repositories import DownloadRepository, ImportRepository
 from .search import SearchService
 
 
@@ -44,7 +57,60 @@ class RecordTreeApp:
         )
 
     def doctor(self) -> None:
-        raise NotImplementedFeatureError("Doctor checks are not implemented yet.")
+        checks: list[DoctorCheck] = []
+        config_path = Path("env/config.toml").expanduser()
+        app_config = None
+        if config_path.exists():
+            try:
+                app_config = config_module.load_config(config_path)
+            except ConfigError as error:
+                checks.append(DoctorCheck("config", "fail", str(error)))
+            else:
+                checks.append(DoctorCheck("config", "pass", str(config_path.resolve())))
+        else:
+            checks.append(DoctorCheck("config", "fail", f"Config file does not exist: {config_path}"))
+
+        if app_config is not None:
+            try:
+                conn = db.connect(app_config.database_path)
+                try:
+                    version = conn.execute(
+                        "SELECT value FROM schema_meta WHERE key = 'schema_version'"
+                    ).fetchone()
+                finally:
+                    conn.close()
+            except Exception as error:
+                checks.append(DoctorCheck("database", "fail", str(error)))
+                checks.append(DoctorCheck("schema", "fail", "Schema version could not be read."))
+            else:
+                checks.append(DoctorCheck("database", "pass", str(app_config.database_path)))
+                if version is None:
+                    checks.append(DoctorCheck("schema", "fail", "schema_version is missing."))
+                else:
+                    checks.append(DoctorCheck("schema", "pass", str(version["value"])))
+
+            for name, path in (("downloads_dir", app_config.downloads_dir), ("logs_dir", app_config.logs_dir)):
+                checks.append(_check_writable_dir(name, path))
+
+            whoami = _check_executable("mega-whoami", app_config.mega_whoami)
+            get = _check_executable("mega-get", app_config.mega_get)
+            checks.extend([whoami[0], get[0]])
+            if whoami[1] is not None:
+                login = mega.check_login(whoami[1])
+                if login.logged_in:
+                    checks.append(DoctorCheck("mega_login", "pass", login.message))
+                else:
+                    checks.append(
+                        DoctorCheck(
+                            "mega_login",
+                            "fail",
+                            "MEGA is not logged in. Run mega-login manually.",
+                        )
+                    )
+            else:
+                checks.append(DoctorCheck("mega_login", "warn", "Skipped because mega-whoami is unavailable."))
+
+        return DoctorResult(checks)
 
     def import_file(self, path: Path) -> ImportResult:
         source_path = path.expanduser().resolve()
@@ -171,6 +237,147 @@ class RecordTreeApp:
         finally:
             conn.close()
 
+    def build_download_plan(
+        self,
+        record_id_or_key: str,
+        include_par2: bool = False,
+        types: str | None = None,
+        output: Path | None = None,
+    ) -> DownloadPlan:
+        app_config = config_module.load_config(Path("env/config.toml"))
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).build_download_plan(
+                record_id_or_key=record_id_or_key,
+                downloads_dir=app_config.downloads_dir,
+                include_par2_by_default=app_config.include_par2_by_default,
+                include_par2=include_par2,
+                type_filter_text=types,
+                output_dir=output,
+                safety_margin_percent=app_config.safety_margin_percent,
+                safety_margin_min_mb=app_config.safety_margin_min_mb,
+            )
+        finally:
+            conn.close()
+
+    def download(
+        self,
+        record_id_or_key: str,
+        include_par2: bool = False,
+        types: str | None = None,
+        output: Path | None = None,
+        assume_yes: bool = False,
+        confirm_callback=None,
+    ) -> DownloadExecutionResult:
+        app_config = config_module.load_config(Path("env/config.toml"))
+        plan = self.build_download_plan(record_id_or_key, include_par2, types, output)
+        conn = self._open_app_db()
+        downloads = DownloadRepository(conn)
+        try:
+            try:
+                mega_whoami = mega.resolve_executable(app_config.mega_whoami)
+                mega_get = mega.resolve_executable(app_config.mega_get)
+            except ExternalToolError as error:
+                download_id = downloads.create_from_plan(plan, "blocked", str(error))
+                conn.commit()
+                return DownloadExecutionResult(
+                    download_id=download_id,
+                    record_group_id=plan.record_group_id,
+                    status="blocked",
+                    completed=0,
+                    failed=0,
+                    output_dir=plan.output_dir,
+                    message=str(error),
+                )
+
+            login = mega.check_login(mega_whoami)
+            if not login.logged_in:
+                message = "MEGA is not logged in. Run mega-login manually."
+                download_id = downloads.create_from_plan(plan, "blocked", message)
+                conn.commit()
+                return DownloadExecutionResult(
+                    download_id=download_id,
+                    record_group_id=plan.record_group_id,
+                    status="blocked",
+                    completed=0,
+                    failed=0,
+                    output_dir=plan.output_dir,
+                    message=message,
+                )
+
+            if plan.free_bytes_before is not None and plan.free_bytes_before < plan.required_bytes:
+                message = (
+                    f"Insufficient disk space: required={plan.required_bytes} "
+                    f"free={plan.free_bytes_before}"
+                )
+                download_id = downloads.create_from_plan(plan, "blocked", message)
+                conn.commit()
+                return DownloadExecutionResult(
+                    download_id=download_id,
+                    record_group_id=plan.record_group_id,
+                    status="blocked",
+                    completed=0,
+                    failed=0,
+                    output_dir=plan.output_dir,
+                    message=message,
+                )
+
+            if not assume_yes and confirm_callback is not None and not confirm_callback(plan):
+                download_id = downloads.create_from_plan(plan, "cancelled", "Cancelled by user.")
+                conn.commit()
+                return DownloadExecutionResult(
+                    download_id=download_id,
+                    record_group_id=plan.record_group_id,
+                    status="cancelled",
+                    completed=0,
+                    failed=0,
+                    output_dir=plan.output_dir,
+                    message="Cancelled by user.",
+                )
+
+            plan.output_dir.mkdir(parents=True, exist_ok=True)
+            download_id = downloads.create_from_plan(plan, "planned")
+            completed = 0
+            failed = 0
+            last_exit_code: int | None = None
+            for link in plan.selected_links:
+                item_id = downloads.create_download_item(download_id, link.id)
+                downloads.start_download_item(item_id)
+                try:
+                    result = mega.download_link(mega_get, link.mega_url, plan.output_dir)
+                except Exception as error:
+                    result = MegaCommandResult(1, "", str(error))
+                last_exit_code = result.exit_code
+                message = _command_message(result.stdout, result.stderr)
+                if result.exit_code == 0:
+                    completed += 1
+                    downloads.finish_download_item(item_id, "completed", result.exit_code, message)
+                else:
+                    failed += 1
+                    downloads.finish_download_item(item_id, "failed", result.exit_code, message)
+
+            status = "completed" if failed == 0 else "failed"
+            downloads.update_download_status(
+                download_id,
+                status,
+                last_exit_code,
+                f"completed={completed} failed={failed}",
+            )
+            conn.commit()
+            return DownloadExecutionResult(
+                download_id=download_id,
+                record_group_id=plan.record_group_id,
+                status=status,
+                completed=completed,
+                failed=failed,
+                output_dir=plan.output_dir,
+            )
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     def _create_importer(self, path: Path):
         extension = path.suffix.casefold()
         if extension in {".xlsx", ".xlsm"}:
@@ -225,3 +432,27 @@ def _export_import_errors(conn, import_id: int, logs_dir: Path) -> Path:
                 ]
             )
     return path
+
+
+def _check_writable_dir(name: str, path: Path) -> DoctorCheck:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".recordtree_write_test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+    except OSError as error:
+        return DoctorCheck(name, "fail", str(error))
+    return DoctorCheck(name, "pass", str(path))
+
+
+def _check_executable(name: str, configured: str) -> tuple[DoctorCheck, str | None]:
+    try:
+        resolved = mega.resolve_executable(configured)
+    except ExternalToolError as error:
+        return DoctorCheck(name, "fail", str(error)), None
+    return DoctorCheck(name, "pass", resolved), resolved
+
+
+def _command_message(stdout: str, stderr: str) -> str | None:
+    message = "\n".join(part for part in (stdout, stderr) if part)
+    return message or None

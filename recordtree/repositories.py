@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import sqlite3
 
-from .models import ImportRecord, ImportStats, LinkItem
+from .models import DownloadPlan, ImportRecord, ImportStats, LinkItem
 from .normalizers import build_link_content_hash, clean_text, normalize_search_text
 
 
@@ -363,6 +363,99 @@ class DownloadRepository:
             (link_id,),
         ).fetchone()
         return row is not None
+
+    def create_download(
+        self,
+        record_group_id: int,
+        output_dir: Path,
+        selected_bytes: int,
+        free_bytes_before: int | None,
+        status: str,
+        message: str | None = None,
+    ) -> int:
+        cursor = self.conn.execute(
+            f"""
+            INSERT INTO downloads (
+                record_group_id, requested_at, output_dir, selected_bytes,
+                free_bytes_before, status, mega_exit_code, message
+            )
+            VALUES (?, {utc_now_sql()}, ?, ?, ?, ?, NULL, ?)
+            """,
+            (
+                record_group_id,
+                str(output_dir),
+                selected_bytes,
+                free_bytes_before,
+                status,
+                message,
+            ),
+        )
+        return int(cursor.lastrowid)
+
+    def update_download_status(
+        self,
+        download_id: int,
+        status: str,
+        mega_exit_code: int | None = None,
+        message: str | None = None,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE downloads
+            SET status = ?, mega_exit_code = ?, message = ?
+            WHERE id = ?
+            """,
+            (status, mega_exit_code, message, download_id),
+        )
+
+    def create_download_item(self, download_id: int, link_id: int, status: str = "planned") -> int:
+        cursor = self.conn.execute(
+            """
+            INSERT INTO download_items (
+                download_id, link_id, status, started_at, finished_at, mega_exit_code, message
+            )
+            VALUES (?, ?, ?, NULL, NULL, NULL, NULL)
+            """,
+            (download_id, link_id, status),
+        )
+        return int(cursor.lastrowid)
+
+    def start_download_item(self, item_id: int) -> None:
+        self.conn.execute(
+            f"""
+            UPDATE download_items
+            SET status = 'running', started_at = {utc_now_sql()}
+            WHERE id = ?
+            """,
+            (item_id,),
+        )
+
+    def finish_download_item(
+        self,
+        item_id: int,
+        status: str,
+        mega_exit_code: int | None,
+        message: str | None,
+    ) -> None:
+        self.conn.execute(
+            f"""
+            UPDATE download_items
+            SET status = ?, finished_at = {utc_now_sql()},
+                mega_exit_code = ?, message = ?
+            WHERE id = ?
+            """,
+            (status, mega_exit_code, message, item_id),
+        )
+
+    def create_from_plan(self, plan: DownloadPlan, status: str, message: str | None = None) -> int:
+        return self.create_download(
+            record_group_id=plan.record_group_id,
+            output_dir=plan.output_dir,
+            selected_bytes=plan.selected_bytes,
+            free_bytes_before=plan.free_bytes_before,
+            status=status,
+            message=message,
+        )
 
 
 class LegacyMigrationRepository:

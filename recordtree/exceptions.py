@@ -36,3 +36,7 @@ class NotFoundError(RecordTreeError):
 
 class NotImplementedFeatureError(RecordTreeError):
     """Raised by placeholder commands before implementation lands."""
+
+
+class ExternalToolError(RecordTreeError):
+    """Raised when an external tool is unavailable or fails preflight."""

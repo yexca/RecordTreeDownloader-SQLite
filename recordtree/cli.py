@@ -8,7 +8,7 @@ from rich.table import Table
 
 from .app import RecordTreeApp
 from .exceptions import ConfigError, NotFoundError, NotImplementedFeatureError, RecordTreeError
-from .models import RecordDetail, RecordSummary, StatsResult
+from .models import DoctorResult, DownloadExecutionResult, DownloadPlan, RecordDetail, RecordSummary, StatsResult
 from .search import preview_url
 from .sizes import format_bytes
 
@@ -53,11 +53,15 @@ def init() -> None:
 def doctor() -> None:
     """Check local configuration and external dependencies."""
     try:
-        RecordTreeApp().doctor()
+        result = RecordTreeApp().doctor()
     except NotImplementedFeatureError as error:
         console.print(f"[yellow]{error}[/yellow]")
     except RecordTreeError as error:
         _handle_error(error)
+    else:
+        _print_doctor(result)
+        if not result.ok:
+            raise typer.Exit(4)
 
 
 @app.command(name="import")
@@ -177,6 +181,40 @@ def info(record_id_or_key: str) -> None:
         _print_record_detail(detail)
 
 
+@app.command()
+def download(
+    record_id_or_key: str,
+    include_par2: bool = typer.Option(False, "--include-par2"),
+    types: str | None = typer.Option(None, "--types"),
+    output: Path | None = typer.Option(None, "--output"),
+    yes: bool = typer.Option(False, "--yes"),
+) -> None:
+    """Download selected active links through MEGAcmd."""
+    app_service = RecordTreeApp()
+
+    def confirm(plan: DownloadPlan) -> bool:
+        _print_download_plan(plan)
+        return typer.confirm("Continue with download?")
+
+    try:
+        result = app_service.download(
+            record_id_or_key,
+            include_par2=include_par2,
+            types=types,
+            output=output,
+            assume_yes=yes,
+            confirm_callback=None if yes else confirm,
+        )
+    except RecordTreeError as error:
+        _handle_error(error)
+    else:
+        _print_download_result(result)
+        if result.status == "blocked":
+            raise typer.Exit(5)
+        if result.status == "failed":
+            raise typer.Exit(10)
+
+
 def _dash(value: object | None) -> str:
     if value is None:
         return "-"
@@ -205,6 +243,16 @@ def _print_record_rows(title: str, rows: list[RecordSummary]) -> None:
             str(row.active_links),
             row.downloaded,
         )
+    console.print(table)
+
+
+def _print_doctor(result: DoctorResult) -> None:
+    table = Table(title="Doctor")
+    table.add_column("Check", style="cyan")
+    table.add_column("Status")
+    table.add_column("Message")
+    for check in result.checks:
+        table.add_row(check.name, check.status, check.message)
     console.print(table)
 
 
@@ -297,3 +345,35 @@ def _print_stats(result: StatsResult) -> None:
             _dash(item.message),
         )
     console.print(downloads)
+
+
+def _print_download_plan(plan: DownloadPlan) -> None:
+    table = Table(title="Download plan")
+    table.add_column("Item", style="cyan")
+    table.add_column("Value")
+    table.add_row("Record", f"{plan.record_group_id} {plan.actor} {plan.title}")
+    table.add_row("Output", str(plan.output_dir))
+    table.add_row("Files", str(len(plan.selected_links)))
+    types = sorted({link.file_type or "-" for link in plan.selected_links})
+    table.add_row("Types", ", ".join(types))
+    table.add_row("Selected size", format_bytes(plan.selected_bytes))
+    table.add_row("Safety margin", format_bytes(plan.margin_bytes))
+    table.add_row("Required", format_bytes(plan.required_bytes))
+    table.add_row("Free", format_bytes(plan.free_bytes_before))
+    table.add_row("Exclude .par2", "no" if plan.include_par2 else "yes")
+    console.print(table)
+
+
+def _print_download_result(result: DownloadExecutionResult) -> None:
+    table = Table(title="Download summary")
+    table.add_column("Item", style="cyan")
+    table.add_column("Value")
+    table.add_row("Download ID", str(result.download_id))
+    table.add_row("Record group", str(result.record_group_id))
+    table.add_row("Status", result.status)
+    table.add_row("Completed", str(result.completed))
+    table.add_row("Failed", str(result.failed))
+    table.add_row("Output", str(result.output_dir))
+    if result.message:
+        table.add_row("Message", result.message)
+    console.print(table)

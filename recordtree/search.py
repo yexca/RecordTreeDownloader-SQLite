@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import sqlite3
+import shutil
+from pathlib import Path
 
 from .exceptions import NotFoundError, ValidationError
 from .models import (
+    DownloadLink,
+    DownloadPlan,
     DownloadSummary,
     ImportSummary,
     LinkSummary,
@@ -12,6 +16,7 @@ from .models import (
     StatsResult,
 )
 from .normalizers import normalize_date, normalize_search_text
+from .sizes import calculate_margin
 
 
 DEFAULT_LIMIT = 50
@@ -210,6 +215,65 @@ class SearchService:
             inactive_link_count=int(inactive_count),
         )
 
+    def build_download_plan(
+        self,
+        record_id_or_key: str,
+        downloads_dir: Path,
+        include_par2_by_default: bool,
+        include_par2: bool,
+        type_filter_text: str | None,
+        output_dir: Path | None,
+        safety_margin_percent: int,
+        safety_margin_min_mb: int,
+    ) -> DownloadPlan:
+        detail = self.get_info(record_id_or_key)
+        links = [
+            DownloadLink(
+                id=link.id,
+                link_order=link.link_order,
+                mega_url=link.mega_url,
+                file_type=link.file_type,
+                size_bytes=link.size_bytes,
+                formatted_size=link.formatted_size,
+            )
+            for link in detail.links
+        ]
+        should_include_par2 = include_par2 or include_par2_by_default
+        if not should_include_par2:
+            links = [link for link in links if link.file_type != ".par2"]
+
+        type_filter = parse_type_filter(type_filter_text)
+        if type_filter is not None:
+            links = [link for link in links if link.file_type in type_filter]
+        if not links:
+            description = "excluding .par2" if not should_include_par2 else "including .par2"
+            if type_filter:
+                description += " and applying --types " + ",".join(sorted(type_filter))
+            raise ValidationError(f"No links selected after {description}.")
+
+        selected_bytes = sum(link.size_bytes for link in links)
+        margin = calculate_margin(selected_bytes, safety_margin_percent, safety_margin_min_mb)
+        resolved_output = (
+            output_dir.expanduser().resolve()
+            if output_dir is not None
+            else (downloads_dir / str(detail.id)).resolve()
+        )
+        check_parent = nearest_existing_parent(resolved_output)
+        free_bytes = shutil.disk_usage(check_parent).free
+        return DownloadPlan(
+            record_group_id=detail.id,
+            output_dir=resolved_output,
+            actor=detail.actor,
+            title=detail.title,
+            selected_links=links,
+            selected_bytes=selected_bytes,
+            margin_bytes=margin,
+            required_bytes=selected_bytes + margin,
+            free_bytes_before=free_bytes,
+            include_par2=should_include_par2,
+            type_filter=type_filter,
+        )
+
     def stats(self) -> StatsResult:
         totals = self.conn.execute(
             """
@@ -357,6 +421,26 @@ def normalize_limit(limit: int) -> int:
     if limit < 1:
         raise ValidationError("Limit must be at least 1.")
     return min(limit, MAX_LIMIT)
+
+
+def parse_type_filter(value: str | None) -> set[str] | None:
+    if value is None or not value.strip():
+        return None
+    parts = [part.strip().casefold() for part in value.split(",") if part.strip()]
+    if not parts:
+        return None
+    normalized = {part if part.startswith(".") else f".{part}" for part in parts}
+    return normalized
+
+
+def nearest_existing_parent(path: Path) -> Path:
+    current = path if path.exists() else path.parent
+    while not current.exists():
+        parent = current.parent
+        if parent == current:
+            raise ValidationError(f"No existing parent directory for output path: {path}")
+        current = parent
+    return current
 
 
 def preview_url(url: str, edge: int = 24) -> str:

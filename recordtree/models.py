@@ -151,6 +151,7 @@ class StatsResult:
 @dataclass(frozen=True)
 class DownloadLink:
     id: int
+    link_order: int
     mega_url: str
     file_type: str | None
     size_bytes: int
@@ -161,6 +162,8 @@ class DownloadLink:
 class DownloadPlan:
     record_group_id: int
     output_dir: Path
+    actor: str = ""
+    title: str = ""
     selected_links: list[DownloadLink] = field(default_factory=list)
     selected_bytes: int = 0
     margin_bytes: int = 0
@@ -168,3 +171,44 @@ class DownloadPlan:
     free_bytes_before: int | None = None
     include_par2: bool = False
     type_filter: set[str] | None = None
+
+
+@dataclass(frozen=True)
+class MegaCommandResult:
+    exit_code: int
+    stdout: str
+    stderr: str
+
+
+@dataclass(frozen=True)
+class MegaLoginStatus:
+    logged_in: bool
+    exit_code: int
+    message: str
+
+
+@dataclass(frozen=True)
+class DoctorCheck:
+    name: str
+    status: str
+    message: str
+
+
+@dataclass(frozen=True)
+class DoctorResult:
+    checks: list[DoctorCheck]
+
+    @property
+    def ok(self) -> bool:
+        return all(check.status in {"pass", "warn"} for check in self.checks)
+
+
+@dataclass(frozen=True)
+class DownloadExecutionResult:
+    download_id: int
+    record_group_id: int
+    status: str
+    completed: int
+    failed: int
+    output_dir: Path
+    message: str | None = None
