@@ -1,5 +1,6 @@
 export type DownloadedStatus = 'all' | 'partial' | 'none' | 'unknown';
 export type CheckStatus = 'pass' | 'warn' | 'fail';
+export type JobStatus = 'queued' | 'running' | 'completed' | 'failed';
 
 export interface StatsResult {
   total_record_groups: number;
@@ -23,6 +24,61 @@ export interface ImportSummary {
   status: string;
   total_rows: number;
   error_count: number;
+}
+
+export interface ImportStats {
+  total_rows: number;
+  inserted_groups: number;
+  updated_groups: number;
+  skipped_groups: number;
+  link_sets_changed: number;
+  inserted_links: number;
+  skipped_links: number;
+  error_count: number;
+}
+
+export interface ImportResult {
+  import_id: number;
+  source_type: string;
+  source_path: string;
+  status: string;
+  stats: ImportStats;
+  error_csv_path: string | null;
+  extra_columns: string[];
+  notes: string | null;
+}
+
+export interface JobProgress {
+  phase: string;
+  source_type: string;
+  source_path: string;
+  completed_rows: number;
+  total_rows: number | null;
+}
+
+export interface JobEvent {
+  index: number;
+  type: string;
+  created_at: string;
+  data: Record<string, unknown>;
+}
+
+export interface ImportJob {
+  id: string;
+  kind: 'import';
+  status: JobStatus;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  progress: JobProgress | null;
+  events: JobEvent[];
+  result: ImportResult | null;
+  error: string | null;
+}
+
+export interface ImportCreateResponse {
+  job_id: string;
+  status: JobStatus;
 }
 
 export interface DownloadSummary {

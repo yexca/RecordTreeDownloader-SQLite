@@ -11,6 +11,7 @@ import {
 import { useDisclosure, useHash } from '@mantine/hooks';
 import {
   IconDatabase,
+  IconFileImport,
   IconLayoutDashboard,
   IconMoon,
   IconSearch,
@@ -18,16 +19,18 @@ import {
   IconSun,
 } from '@tabler/icons-react';
 import Dashboard from './pages/Dashboard';
+import ImportPage from './pages/Import';
 import RecordDetail from './pages/RecordDetail';
 import Search from './pages/Search';
 import SystemStatus from './pages/SystemStatus';
 
-type Route = 'dashboard' | 'search' | 'status' | 'record';
+type Route = 'dashboard' | 'search' | 'import' | 'status' | 'record';
 
 function parseHash(hash: string): { route: Route; recordId?: string } {
   const normalized = hash.replace(/^#\/?/, '');
   const [route, recordId] = normalized.split('/');
   if (route === 'search') return { route: 'search' };
+  if (route === 'import') return { route: 'import' };
   if (route === 'status') return { route: 'status' };
   if (route === 'records' && recordId) return { route: 'record', recordId };
   return { route: 'dashboard' };
@@ -47,6 +50,8 @@ export default function App() {
   const page =
     route === 'search' ? (
       <Search onOpenRecord={(id) => navigate(`/records/${id}`)} />
+    ) : route === 'import' ? (
+      <ImportPage />
     ) : route === 'status' ? (
       <SystemStatus />
     ) : route === 'record' && recordId ? (
@@ -91,6 +96,12 @@ export default function App() {
           leftSection={<IconSearch size={18} />}
           active={route === 'search' || route === 'record'}
           onClick={() => navigate('/search')}
+        />
+        <NavLink
+          label="Import"
+          leftSection={<IconFileImport size={18} />}
+          active={route === 'import'}
+          onClick={() => navigate('/import')}
         />
         <NavLink
           label="System Status"

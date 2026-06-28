@@ -50,6 +50,10 @@ body {
   background: #f0f7f5;
 }
 
+.dropzone {
+  border-radius: 8px;
+}
+
 @media (max-width: 48em) {
   .truncate-cell {
     max-width: 220px;

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -154,3 +156,81 @@ def test_api_maps_project_errors_to_http_responses(
     bad_date = client.get("/api/records/search/date")
     assert bad_date.status_code == 400
     assert bad_date.json()["error"] == "ValidationError"
+
+
+def test_import_upload_creates_background_job_and_reports_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    RecordTreeApp().init()
+    client = TestClient(app)
+    payload = json.dumps(
+        [
+            {
+                "author": "Upload Actor",
+                "records": [
+                    {
+                        "FileNames": "Upload bundle",
+                        "total": 123,
+                        "FormattedSize": "123 B",
+                        "property": [
+                            {
+                                "Link": "https://example.invalid/upload/1",
+                                "Size": 123,
+                                "FormattedSize": "123 B",
+                                "Type": "mp4",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    ).encode("utf-8")
+
+    response = client.post(
+        "/api/imports",
+        files={"file": ("../unsafe fixture.json", payload, "application/json")},
+    )
+
+    assert response.status_code == 200
+    created = response.json()
+    assert created["status"] in {"queued", "running", "completed"}
+    job_id = created["job_id"]
+
+    job = _wait_for_job(client, job_id)
+    assert job["status"] == "completed"
+    assert job["progress"]["completed_rows"] == 1
+    assert job["progress"]["total_rows"] == 1
+    assert job["result"]["import_id"] >= 1
+    assert job["result"]["source_type"] == "json"
+    assert job["result"]["status"] == "completed"
+    assert job["result"]["stats"]["inserted_groups"] == 1
+    assert Path(job["result"]["source_path"]).parent == (tmp_path / "files" / "uploads").resolve()
+    assert ".." not in Path(job["result"]["source_path"]).name
+
+    events = client.get(f"/api/jobs/{job_id}/events")
+    assert events.status_code == 200
+    assert "event: completed" in events.text
+
+
+def test_missing_job_returns_404() -> None:
+    client = TestClient(app)
+
+    response = client.get("/api/jobs/not-a-real-job")
+
+    assert response.status_code == 404
+    assert response.json()["error"] == "NotFoundError"
+
+
+def _wait_for_job(client: TestClient, job_id: str) -> dict[str, object]:
+    deadline = time.monotonic() + 5
+    last_payload: dict[str, object] | None = None
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/jobs/{job_id}")
+        assert response.status_code == 200
+        last_payload = response.json()
+        if last_payload["status"] in {"completed", "failed"}:
+            return last_payload
+        time.sleep(0.05)
+    raise AssertionError(f"Job did not finish: {last_payload}")

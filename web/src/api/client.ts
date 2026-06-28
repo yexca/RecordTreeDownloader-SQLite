@@ -3,6 +3,8 @@ import type {
   ApiError,
   DoctorResult,
   DownloadPlan,
+  ImportCreateResponse,
+  ImportJob,
   RecordDetail,
   RecordSummary,
   StatsResult,
@@ -61,4 +63,24 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  createImport: async (file: File) => {
+    const body = new FormData();
+    body.append('file', file);
+    const response = await fetch('/api/imports', {
+      method: 'POST',
+      body,
+    });
+    if (!response.ok) {
+      let message = `Request failed with ${response.status}`;
+      try {
+        const payload = (await response.json()) as ApiError;
+        message = payload.detail || payload.error || message;
+      } catch {
+        // Keep the HTTP fallback when the server did not return JSON.
+      }
+      throw new Error(message);
+    }
+    return (await response.json()) as ImportCreateResponse;
+  },
+  job: (jobId: string) => request<ImportJob>(`/api/jobs/${encodeURIComponent(jobId)}`),
 };

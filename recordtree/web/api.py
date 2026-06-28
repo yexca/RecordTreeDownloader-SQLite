@@ -1,18 +1,26 @@
 from __future__ import annotations
 
+import re
+import shutil
+import uuid
+from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, Query
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, File, Query, UploadFile
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from recordtree.app import RecordTreeApp
 from recordtree.exceptions import ConfigError, NotFoundError, RecordTreeError, ValidationError
 
 from .schemas import DownloadPlanRequest
 from .serializers import to_json_safe
+from .jobs import JobManager
 
 
 app = FastAPI(title="RecordTreeDownloader API")
+job_manager = JobManager()
+UPLOAD_DIR = Path("files/uploads")
+SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._ -]+")
 
 
 @app.exception_handler(ConfigError)
@@ -39,6 +47,38 @@ def health() -> dict[str, str]:
 @app.post("/api/init")
 def init() -> dict[str, object]:
     return _serialize(RecordTreeApp().init())
+
+
+@app.post("/api/imports")
+def create_import(file: Annotated[UploadFile, File()]) -> dict[str, object]:
+    if not file.filename:
+        raise ValidationError("Uploaded file must have a filename.")
+    filename = _safe_filename(file.filename)
+    upload_dir = UPLOAD_DIR.resolve()
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    source_path = upload_dir / f"{_short_token()}_{filename}"
+    with source_path.open("wb") as handle:
+        shutil.copyfileobj(file.file, handle)
+    job = job_manager.start_import(source_path)
+    return {"job_id": job.id, "status": job.status}
+
+
+@app.get("/api/jobs/{job_id}")
+def get_job(job_id: str) -> dict[str, object]:
+    try:
+        job = job_manager.get(job_id)
+    except KeyError as error:
+        raise NotFoundError(f"Job not found: {job_id}") from error
+    return job_manager.serialize(job)
+
+
+@app.get("/api/jobs/{job_id}/events")
+def job_events(job_id: str, after: int = 0) -> StreamingResponse:
+    try:
+        payloads = job_manager.sse_payloads(job_id, after)
+    except KeyError as error:
+        raise NotFoundError(f"Job not found: {job_id}") from error
+    return StreamingResponse(iter(payloads), media_type="text/event-stream")
 
 
 @app.get("/api/doctor")
@@ -128,3 +168,14 @@ def _error_response(status_code: int, exc: RecordTreeError) -> JSONResponse:
         },
     )
 
+
+def _safe_filename(filename: str) -> str:
+    name = Path(filename).name.strip().replace("\\", "_")
+    cleaned = SAFE_FILENAME_RE.sub("_", name).strip(" .")
+    if not cleaned:
+        raise ValidationError("Uploaded file must have a usable filename.")
+    return cleaned
+
+
+def _short_token() -> str:
+    return uuid.uuid4().hex[:12]
