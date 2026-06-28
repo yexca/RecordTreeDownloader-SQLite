@@ -96,6 +96,27 @@ def test_cli_search_limit_below_one_returns_exit_code_2(tmp_path: Path, monkeypa
     assert "Limit must be at least 1" in result.output
 
 
+def test_cli_search_actor_lists_actor_ids(tmp_path: Path, monkeypatch) -> None:
+    actor_id = _setup_record(tmp_path, monkeypatch)
+
+    result = CliRunner().invoke(app, ["search-actor", "cli"])
+
+    assert result.exit_code == 0
+    assert "Actor search" in result.output
+    assert str(actor_id) in result.output
+    assert "CLI Actor" in result.output
+    assert "CLI title" not in result.output
+
+
+def test_cli_actor_records_lists_records_by_actor_id(tmp_path: Path, monkeypatch) -> None:
+    actor_id = _setup_record(tmp_path, monkeypatch)
+
+    result = CliRunner().invoke(app, ["actor-records", str(actor_id)])
+
+    assert result.exit_code == 0
+    assert "Actor records" in result.output
+
+
 def test_cli_download_requires_record_or_actor(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     runner = CliRunner()

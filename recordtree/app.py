@@ -14,6 +14,7 @@ from .importer.json_importer import JsonImporter
 from .importer.legacy_db import LegacyDbImporter, LegacyMigrationService
 from .importer.service import ImportService, apply_upsert_result
 from .models import (
+    ActorSummary,
     ActorDownloadResult,
     DoctorCheck,
     DoctorResult,
@@ -227,10 +228,17 @@ class RecordTreeApp:
         finally:
             conn.close()
 
-    def search_actor(self, name: str, limit: int = 50) -> list[RecordSummary]:
+    def search_actor(self, name: str, limit: int = 50) -> list[ActorSummary]:
         conn = self._open_app_db()
         try:
             return SearchService(conn).search_actor(name, limit)
+        finally:
+            conn.close()
+
+    def list_actor_records(self, actor_id: int, limit: int = 50) -> list[RecordSummary]:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).list_actor_records(actor_id, limit)
         finally:
             conn.close()
 

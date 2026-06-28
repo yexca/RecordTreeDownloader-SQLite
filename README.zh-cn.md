@@ -66,6 +66,7 @@ recordtree import "files/Record Tree.Json"
 
 ```bash
 recordtree search-actor "<name>"
+recordtree actor-records 12
 recordtree search-source niconico
 recordtree search-title ASMR
 recordtree search-date --from 2026-01-01 --to 2026-01-31

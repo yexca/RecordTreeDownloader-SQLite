@@ -11,6 +11,7 @@ from rich.table import Table
 from .app import RecordTreeApp
 from .exceptions import ConfigError, NotFoundError, NotImplementedFeatureError, RecordTreeError, ValidationError
 from .models import (
+    ActorSummary,
     ActorDownloadResult,
     DoctorResult,
     DownloadExecutionResult,
@@ -148,13 +149,24 @@ def stats() -> None:
 
 @app.command(name="search-actor")
 def search_actor(name: str, limit: int = 50) -> None:
-    """Search records by actor name."""
+    """Search actors by name and show their ids."""
     try:
         rows = RecordTreeApp().search_actor(name, limit)
     except RecordTreeError as error:
         _handle_error(error)
     else:
-        _print_record_rows("Actor search", rows)
+        _print_actor_rows("Actor search", rows)
+
+
+@app.command(name="actor-records")
+def actor_records(actor_id: int, limit: int = 50) -> None:
+    """List records for an actor id."""
+    try:
+        rows = RecordTreeApp().list_actor_records(actor_id, limit)
+    except RecordTreeError as error:
+        _handle_error(error)
+    else:
+        _print_record_rows("Actor records", rows)
 
 
 @app.command(name="search-title")
@@ -315,6 +327,22 @@ def _print_record_rows(title: str, rows: list[RecordSummary]) -> None:
             format_bytes(row.size_bytes),
             str(row.active_links),
             row.downloaded,
+        )
+    console.print(table)
+
+
+def _print_actor_rows(title: str, rows: list[ActorSummary]) -> None:
+    table = Table(title=title)
+    table.add_column("id", style="cyan")
+    table.add_column("actor")
+    table.add_column("records")
+    table.add_column("undownloaded")
+    for row in rows:
+        table.add_row(
+            str(row.id),
+            row.name,
+            str(row.record_count),
+            str(row.undownloaded_count),
         )
     console.print(table)
 

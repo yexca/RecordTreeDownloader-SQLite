@@ -133,8 +133,12 @@ def test_search_and_info_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     groups = _setup(tmp_path, monkeypatch)
     app = RecordTreeApp()
 
-    actor_rows = app.search_actor("actor a")
-    assert [row.title for row in actor_rows] == ["ASMR sleep"]
+    actor_rows = app.search_actor("actor")
+    assert [(row.name, row.record_count, row.undownloaded_count) for row in actor_rows] == [
+        ("Actor A", 1, 1),
+        ("Actor B", 1, 0),
+        ("Actor C", 1, 1),
+    ]
 
     title_rows = app.search_title("asmr")
     assert {row.title for row in title_rows} == {"ASMR sleep", "Talk"}
@@ -159,6 +163,9 @@ def test_search_and_info_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         )
     finally:
         conn.close()
+    actor_a_rows = app.search_actor("actor a")
+    assert [(row.id, row.name) for row in actor_a_rows] == [(actor_a_id, "Actor A")]
+    assert [row.title for row in app.list_actor_records(actor_a_id)] == ["ASMR sleep"]
     assert [row.title for row in app.list_undownloaded(actor_id=actor_a_id)] == ["ASMR sleep"]
     assert app.list_undownloaded(actor_id=actor_b_id) == []
 
@@ -190,6 +197,8 @@ def test_stats_and_parameter_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
     with pytest.raises(ValidationError):
         app.search_actor("actor", limit=0)
+    with pytest.raises(NotFoundError):
+        app.list_actor_records(999999)
     with pytest.raises(ValidationError):
         app.search_date(None, None)
     with pytest.raises(NotFoundError):

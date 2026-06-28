@@ -66,6 +66,7 @@ Before importing a large legacy database or doing a large re-import, back up `en
 
 ```bash
 recordtree search-actor "<name>"
+recordtree actor-records 12
 recordtree search-source niconico
 recordtree search-title ASMR
 recordtree search-date --from 2026-01-01 --to 2026-01-31
@@ -75,7 +76,7 @@ recordtree info 123
 recordtree stats
 ```
 
-Search commands are case-insensitive and default to a limit of 50 rows.
+Search commands are case-insensitive and default to a limit of 50 rows. `search-actor` returns matching actors and their ids; use `actor-records <actor-id>` to list that actor's records.
 
 ## Download
 
