@@ -1,0 +1,20 @@
+services:
+  recordtree-web:
+    build:
+      context: .
+    image: recordtree-downloader-sqlite-web:dev
+    container_name: recordtree-web
+    ports:
+      - "8000:8000"
+    environment:
+      TZ: Asia/Tokyo
+    volumes:
+      - ./env:/app/env
+      - ./downloads:/app/downloads
+      - ./logs:/app/logs
+      - ./files:/app/files
+      - megacmd-home:/root
+    restart: unless-stopped
+
+volumes:
+  megacmd-home:

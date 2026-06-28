@@ -8,6 +8,7 @@ from typing import Annotated
 
 from fastapi import FastAPI, File, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from recordtree.app import RecordTreeApp
 from recordtree.exceptions import ConfigError, NotFoundError, RecordTreeError, ValidationError
@@ -21,6 +22,7 @@ app = FastAPI(title="RecordTreeDownloader API")
 job_manager = JobManager()
 UPLOAD_DIR = Path("files/uploads")
 SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._ -]+")
+FRONTEND_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 
 
 @app.exception_handler(ConfigError)
@@ -179,3 +181,7 @@ def _safe_filename(filename: str) -> str:
 
 def _short_token() -> str:
     return uuid.uuid4().hex[:12]
+
+
+if FRONTEND_DIST.exists():
+    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="web")
