@@ -1,8 +1,49 @@
 # RecordTreeDownloader SQLite
 
-RecordTreeDownloader SQLite is a local Python command-line tool for importing Record Tree metadata into SQLite, searching it, and downloading selected MEGA links through MEGAcmd.
+RecordTreeDownloader SQLite is a local Python tool for importing Record Tree metadata into SQLite, searching it, and downloading selected MEGA links through MEGAcmd. It includes the original CLI and a Docker-ready WebUI backed by FastAPI and React.
 
-The tool is intentionally local-first. It does not crawl remote sources, store MEGA credentials, or provide a GUI. MEGA authentication stays in your MEGAcmd installation.
+The tool is intentionally local-first. It does not crawl remote sources or store MEGA credentials. MEGA authentication stays in your MEGAcmd installation.
+
+## Docker WebUI
+
+The recommended deployment path for the WebUI is Docker Compose. The production image builds the React frontend, serves it from the FastAPI backend, and installs the official Debian 12 MEGAcmd package inside the container.
+
+Build and start the WebUI:
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+Open:
+
+```text
+http://127.0.0.1:8000
+```
+
+Initialize the runtime config and SQLite database:
+
+```bash
+docker compose exec recordtree-web recordtree init
+```
+
+Log in to MEGA through MEGAcmd inside the container, then verify the system:
+
+```bash
+docker compose exec recordtree-web mega-login
+docker compose exec recordtree-web recordtree doctor
+```
+
+MEGA credentials are managed by MEGAcmd and are not stored by this application. The Compose file mounts a named Docker volume, `megacmd-home`, at `/root`; that volume stores MEGAcmd login state and survives container recreation unless you remove volumes with `docker compose down -v`.
+
+Runtime data is mounted from the host so it survives container recreation:
+
+- `./env:/app/env` for config and SQLite data
+- `./downloads:/app/downloads` for downloaded files
+- `./logs:/app/logs` for import error CSVs and logs
+- `./files:/app/files` for uploaded/import source files
+
+More Docker notes are in [Docker Development Guide](dev_documents_webui/docker_development.md).
 
 ## Installation
 
