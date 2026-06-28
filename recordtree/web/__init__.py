@@ -1,0 +1,2 @@
+"""FastAPI WebUI backend package."""
+

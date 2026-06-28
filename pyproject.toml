@@ -14,8 +14,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+web = [
+    "fastapi",
+    "uvicorn[standard]",
+]
 dev = [
+    "fastapi",
+    "httpx",
+    "httpx2",
     "pytest",
+    "uvicorn[standard]",
 ]
 
 [project.scripts]
