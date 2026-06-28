@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from recordtree.app import RecordTreeApp
 from recordtree.exceptions import ConfigError, NotFoundError, RecordTreeError, ValidationError
 
-from .schemas import DownloadPlanRequest
+from .schemas import ActorDownloadRequest, DownloadPlanRequest, DownloadRequest
 from .serializers import to_json_safe
 from .jobs import JobManager
 
@@ -67,6 +67,18 @@ def create_import(file: Annotated[UploadFile, File()]) -> dict[str, object]:
     with source_path.open("wb") as handle:
         shutil.copyfileobj(file.file, handle)
     job = job_manager.start_import(source_path)
+    return {"job_id": job.id, "status": job.status}
+
+
+@app.post("/api/downloads")
+def create_download(request: DownloadRequest) -> dict[str, object]:
+    job = job_manager.start_download(request)
+    return {"job_id": job.id, "status": job.status}
+
+
+@app.post("/api/downloads/actor")
+def create_actor_download(request: ActorDownloadRequest) -> dict[str, object]:
+    job = job_manager.start_actor_download(request)
     return {"job_id": job.id, "status": job.status}
 
 

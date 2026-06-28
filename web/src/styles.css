@@ -54,6 +54,11 @@ body {
   border-radius: 8px;
 }
 
+.log-output textarea {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+
 @media (max-width: 48em) {
   .truncate-cell {
     max-width: 220px;

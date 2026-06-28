@@ -63,20 +63,37 @@ export interface JobEvent {
   data: Record<string, unknown>;
 }
 
-export interface ImportJob {
+export interface DownloadExecutionResult {
+  download_id: number;
+  record_group_id: number;
+  status: string;
+  completed: number;
+  failed: number;
+  output_dir: string;
+  message: string | null;
+}
+
+export interface Job {
   id: string;
-  kind: 'import';
+  kind: 'import' | 'download';
   status: JobStatus;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
   progress: JobProgress | null;
+  target: Record<string, unknown> | null;
+  options: Record<string, unknown>;
   events: JobEvent[];
-  result: ImportResult | null;
+  result: ImportResult | DownloadExecutionResult | Record<string, unknown> | null;
   error: string | null;
 }
 
-export interface ImportCreateResponse {
+export type ImportJob = Job & {
+  kind: 'import';
+  result: ImportResult | null;
+};
+
+export interface JobCreateResponse {
   job_id: string;
   status: JobStatus;
 }

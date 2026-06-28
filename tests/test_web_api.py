@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from recordtree.app import RecordTreeApp
 from recordtree.db import connect
 from recordtree.importer.service import ImportService
-from recordtree.models import ImportRecord, LinkItem
+from recordtree.models import ImportRecord, LinkItem, MegaCommandResult, MegaLoginStatus
 from recordtree.repositories import ImportRepository, utc_now_sql
 from recordtree.web.api import app
 
@@ -250,6 +250,93 @@ def test_import_job_reports_failed_status_for_bad_source(
     assert job["status"] == "failed"
     assert job["finished_at"] is not None
     assert job["error"]
+    assert any(event["type"] == "failed" for event in job["events"])
+
+
+def test_download_job_records_output_chunks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    group_id = _setup_record(tmp_path, monkeypatch)
+    client = TestClient(app)
+    monkeypatch.setattr("recordtree.mega.resolve_executable", lambda configured: configured)
+    monkeypatch.setattr(
+        "recordtree.mega.check_login",
+        lambda _whoami: MegaLoginStatus(True, 0, "Account: test"),
+    )
+
+    def fake_download(
+        _mega_get: str,
+        _url: str,
+        _output_dir: Path,
+        output_callback=None,
+    ) -> MegaCommandResult:
+        assert output_callback is not None
+        output_callback("downloading ")
+        output_callback("100%\n")
+        return MegaCommandResult(0, "downloading 100%\n", "")
+
+    monkeypatch.setattr("recordtree.mega.download_link", fake_download)
+
+    response = client.post(
+        "/api/downloads",
+        json={
+            "record_id_or_key": str(group_id),
+            "types": "m4a",
+            "include_par2": False,
+            "only_undownloaded": True,
+        },
+    )
+
+    assert response.status_code == 200
+    job = _wait_for_job(client, response.json()["job_id"])
+    assert job["kind"] == "download"
+    assert job["status"] == "completed"
+    assert job["target"] == {"record_id_or_key": str(group_id)}
+    assert job["result"]["status"] == "completed"
+    assert job["result"]["completed"] == 1
+    assert [
+        event["data"]["chunk"]
+        for event in job["events"]
+        if event["type"] == "output"
+    ] == ["downloading ", "100%\n"]
+
+    events = client.get(f"/api/jobs/{response.json()['job_id']}/events")
+    assert "event: output" in events.text
+    assert "100%" in events.text
+
+
+def test_blocked_download_job_reports_failed_status_and_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    group_id = _setup_record(tmp_path, monkeypatch)
+    client = TestClient(app)
+    monkeypatch.setattr("recordtree.mega.resolve_executable", lambda configured: configured)
+    monkeypatch.setattr(
+        "recordtree.mega.check_login",
+        lambda _whoami: MegaLoginStatus(False, 1, "not logged in"),
+    )
+    monkeypatch.setattr(
+        "recordtree.mega.download_link",
+        lambda *_args, **_kwargs: MegaCommandResult(0, "ok", ""),
+    )
+
+    response = client.post(
+        "/api/downloads",
+        json={
+            "record_id_or_key": str(group_id),
+            "types": "m4a",
+            "include_par2": False,
+            "only_undownloaded": True,
+        },
+    )
+
+    assert response.status_code == 200
+    job = _wait_for_job(client, response.json()["job_id"])
+    assert job["status"] == "failed"
+    assert job["result"]["status"] == "blocked"
+    assert "MEGA is not logged in" in job["error"]
     assert any(event["type"] == "failed" for event in job["events"])
 
 

@@ -3,8 +3,8 @@ import type {
   ApiError,
   DoctorResult,
   DownloadPlan,
-  ImportCreateResponse,
-  ImportJob,
+  Job,
+  JobCreateResponse,
   RecordDetail,
   RecordSummary,
   StatsResult,
@@ -57,9 +57,20 @@ export const api = {
   record: (idOrKey: string) => request<RecordDetail>(`/api/records/${encodeURIComponent(idOrKey)}`),
   downloadPlan: (
     idOrKey: string,
-    body: { include_par2: boolean; types: string | null; only_undownloaded: boolean },
+    body: { include_par2: boolean; types: string | null; output?: string | null; only_undownloaded: boolean },
   ) =>
     request<DownloadPlan>(`/api/records/${encodeURIComponent(idOrKey)}/download-plan`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  createDownload: (body: {
+    record_id_or_key: string;
+    include_par2: boolean;
+    types: string | null;
+    output?: string | null;
+    only_undownloaded: boolean;
+  }) =>
+    request<JobCreateResponse>('/api/downloads', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
@@ -80,7 +91,7 @@ export const api = {
       }
       throw new Error(message);
     }
-    return (await response.json()) as ImportCreateResponse;
+    return (await response.json()) as JobCreateResponse;
   },
-  job: (jobId: string) => request<ImportJob>(`/api/jobs/${encodeURIComponent(jobId)}`),
+  job: (jobId: string) => request<Job>(`/api/jobs/${encodeURIComponent(jobId)}`),
 };

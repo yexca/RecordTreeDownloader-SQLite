@@ -15,7 +15,7 @@ import { notifications } from '@mantine/notifications';
 import { IconAlertCircle, IconFileImport, IconUpload } from '@tabler/icons-react';
 import { DragEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { ImportJob, ImportResult, JobProgress } from '../api/types';
+import type { ImportJob, ImportResult, Job, JobProgress } from '../api/types';
 import { PlainStatusBadge } from '../components/StatusBadge';
 
 const ACCEPTED_EXTENSIONS = ['.xlsx', '.xlsm', '.json', '.db', '.sqlite', '.sqlite3'];
@@ -77,6 +77,10 @@ function ResultSummary({ result }: { result: ImportResult }) {
   );
 }
 
+function asImportJob(job: Job): ImportJob {
+  return job as ImportJob;
+}
+
 export default function ImportPage() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -92,7 +96,7 @@ export default function ImportPage() {
     if (!job || job.status === 'completed' || job.status === 'failed') return;
     timerRef.current = window.setInterval(async () => {
       try {
-        setJob(await api.job(job.id));
+        setJob(asImportJob(await api.job(job.id)));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Job polling failed');
       }
@@ -109,7 +113,7 @@ export default function ImportPage() {
     try {
       const created = await api.createImport(file);
       const next = await api.job(created.job_id);
-      setJob(next);
+      setJob(asImportJob(next));
       notifications.show({ color: 'teal', title: 'Import queued', message: file.name });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed');

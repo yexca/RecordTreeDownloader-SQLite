@@ -14,9 +14,10 @@ from recordtree.app import RecordTreeApp
 from recordtree.models import ImportProgress
 
 from .serializers import to_json_safe
+from .schemas import ActorDownloadRequest, DownloadRequest
 
 JobStatus = Literal["queued", "running", "completed", "failed"]
-JobKind = Literal["import"]
+JobKind = Literal["import", "download"]
 
 
 def utc_now_iso() -> str:
@@ -40,6 +41,8 @@ class Job:
     started_at: str | None = None
     finished_at: str | None = None
     events: list[JobEvent] = field(default_factory=list)
+    target: dict[str, Any] | None = None
+    options: dict[str, Any] = field(default_factory=dict)
     result: dict[str, Any] | None = None
     error: str | None = None
 
@@ -51,11 +54,49 @@ class JobManager:
         self._lock = threading.Lock()
 
     def start_import(self, source_path: Path, app_factory: Callable[[], RecordTreeApp] = RecordTreeApp) -> Job:
-        job = Job(id=uuid.uuid4().hex, kind="import")
+        job = Job(id=uuid.uuid4().hex, kind="import", target={"source_path": source_path})
         self._add_event(job, "queued", {"source_path": source_path})
         with self._lock:
             self._jobs[job.id] = job
         self._executor.submit(self._run_import, job.id, source_path, app_factory)
+        return self.get(job.id)
+
+    def start_download(
+        self,
+        request: DownloadRequest,
+        app_factory: Callable[[], RecordTreeApp] = RecordTreeApp,
+    ) -> Job:
+        target = {"record_id_or_key": request.record_id_or_key}
+        options = {
+            "include_par2": request.include_par2,
+            "types": request.types_text(),
+            "output": request.output_path(),
+            "only_undownloaded": request.only_undownloaded,
+        }
+        job = Job(id=uuid.uuid4().hex, kind="download", target=target, options=options)
+        self._add_event(job, "queued", {"target": target, "options": options})
+        with self._lock:
+            self._jobs[job.id] = job
+        self._executor.submit(self._run_download, job.id, request, app_factory)
+        return self.get(job.id)
+
+    def start_actor_download(
+        self,
+        request: ActorDownloadRequest,
+        app_factory: Callable[[], RecordTreeApp] = RecordTreeApp,
+    ) -> Job:
+        target = {"actor_id": request.actor_id}
+        options = {
+            "count": request.count,
+            "include_par2": request.include_par2,
+            "types": request.types_text(),
+            "output": request.output_path(),
+        }
+        job = Job(id=uuid.uuid4().hex, kind="download", target=target, options=options)
+        self._add_event(job, "queued", {"target": target, "options": options})
+        with self._lock:
+            self._jobs[job.id] = job
+        self._executor.submit(self._run_actor_download, job.id, request, app_factory)
         return self.get(job.id)
 
     def get(self, job_id: str) -> Job:
@@ -87,6 +128,8 @@ class JobManager:
                 "started_at": job.started_at,
                 "finished_at": job.finished_at,
                 "progress": progress,
+                "target": job.target,
+                "options": job.options,
                 "events": job.events,
                 "result": job.result,
                 "error": job.error,
@@ -105,6 +148,52 @@ class JobManager:
             return
         self._mark_completed(job_id, to_json_safe(result))
 
+    def _run_download(
+        self,
+        job_id: str,
+        request: DownloadRequest,
+        app_factory: Callable[[], RecordTreeApp],
+    ) -> None:
+        self._mark_running(job_id)
+        try:
+            result = app_factory().download(
+                record_id_or_key=request.record_id_or_key,
+                include_par2=request.include_par2,
+                types=request.types_text(),
+                output=request.output_path(),
+                assume_yes=True,
+                only_undownloaded=request.only_undownloaded,
+                output_callback=lambda chunk: self._record_output(job_id, chunk),
+            )
+        except Exception as error:
+            self._mark_failed(job_id, str(error))
+            return
+        self._finish_download(job_id, to_json_safe(result), result.status)
+
+    def _run_actor_download(
+        self,
+        job_id: str,
+        request: ActorDownloadRequest,
+        app_factory: Callable[[], RecordTreeApp],
+    ) -> None:
+        self._mark_running(job_id)
+        try:
+            result = app_factory().download_actor(
+                actor_id=request.actor_id,
+                limit=request.count,
+                include_par2=request.include_par2,
+                types=request.types_text(),
+                output=request.output_path(),
+                assume_yes=True,
+                output_callback=lambda chunk: self._record_output(job_id, chunk),
+            )
+        except Exception as error:
+            self._mark_failed(job_id, str(error))
+            return
+        statuses = {item.status for item in result.results}
+        final_status = "failed" if statuses & {"blocked", "failed", "cancelled"} else "completed"
+        self._finish_download(job_id, to_json_safe(result), final_status)
+
     def _record_progress(self, job_id: str, progress: ImportProgress) -> None:
         self._add_event_by_id(
             job_id,
@@ -117,6 +206,9 @@ class JobManager:
                 "total_rows": progress.total_rows,
             },
         )
+
+    def _record_output(self, job_id: str, chunk: str) -> None:
+        self._add_event_by_id(job_id, "output", {"chunk": chunk})
 
     def _mark_running(self, job_id: str) -> None:
         with self._lock:
@@ -132,6 +224,22 @@ class JobManager:
             job.finished_at = utc_now_iso()
             job.result = result
             self._add_event(job, "completed", {"result": result})
+
+    def _finish_download(self, job_id: str, result: dict[str, Any], result_status: str) -> None:
+        with self._lock:
+            job = self._jobs[job_id]
+            job.result = result
+            if result_status in {"blocked", "failed", "cancelled"}:
+                job.status = "failed"
+                job.error = result.get("message") or f"Download ended with status: {result_status}"
+                event_type = "failed"
+                data = {"error": job.error, "result": result}
+            else:
+                job.status = "completed"
+                event_type = "completed"
+                data = {"result": result}
+            job.finished_at = utc_now_iso()
+            self._add_event(job, event_type, data)
 
     def _mark_failed(self, job_id: str, error: str) -> None:
         with self._lock:
@@ -165,6 +273,8 @@ def _copy_job(job: Job) -> Job:
         started_at=job.started_at,
         finished_at=job.finished_at,
         events=list(job.events),
+        target=job.target,
+        options=dict(job.options),
         result=job.result,
         error=job.error,
     )
