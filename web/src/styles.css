@@ -1,0 +1,57 @@
+:root {
+  color-scheme: light;
+  background: #f6f7f8;
+}
+
+body {
+  margin: 0;
+  background: #f6f7f8;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
+.truncate-cell {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.url-cell {
+  max-width: 520px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.app-title {
+  color: #17201d;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.section {
+  border: 1px solid #dde3e1;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.click-row {
+  cursor: pointer;
+}
+
+.click-row:hover {
+  background: #f0f7f5;
+}
+
+@media (max-width: 48em) {
+  .truncate-cell {
+    max-width: 220px;
+  }
+}
