@@ -214,6 +214,45 @@ def test_import_upload_creates_background_job_and_reports_result(
     assert "event: completed" in events.text
 
 
+def test_import_upload_rejects_unsupported_extension_before_saving(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/imports",
+        files={"file": ("notes.txt", b"not importable", "text/plain")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "ValidationError"
+    assert "Unsupported import file extension" in response.json()["detail"]
+    assert not (tmp_path / "files" / "uploads").exists()
+
+
+def test_import_job_reports_failed_status_for_bad_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    RecordTreeApp().init()
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/imports",
+        files={"file": ("broken.json", b"{not-json", "application/json")},
+    )
+
+    assert response.status_code == 200
+    job = _wait_for_job(client, response.json()["job_id"])
+    assert job["status"] == "failed"
+    assert job["finished_at"] is not None
+    assert job["error"]
+    assert any(event["type"] == "failed" for event in job["events"])
+
+
 def test_missing_job_returns_404() -> None:
     client = TestClient(app)
 

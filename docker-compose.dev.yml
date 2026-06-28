@@ -1,0 +1,22 @@
+services:
+  recordtree-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: recordtree-downloader-sqlite-dev:latest
+    container_name: recordtree-dev
+    working_dir: /workspace
+    command: sleep infinity
+    ports:
+      - "8001:8000"
+      - "5173:5173"
+    environment:
+      TZ: Asia/Tokyo
+    volumes:
+      - .:/workspace
+      - recordtree-dev-node-modules:/workspace/web/node_modules
+      - megacmd-dev-home:/root
+
+volumes:
+  recordtree-dev-node-modules:
+  megacmd-dev-home:

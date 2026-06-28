@@ -21,6 +21,7 @@ from .jobs import JobManager
 app = FastAPI(title="RecordTreeDownloader API")
 job_manager = JobManager()
 UPLOAD_DIR = Path("files/uploads")
+ALLOWED_IMPORT_EXTENSIONS = {".xlsx", ".xlsm", ".json", ".db", ".sqlite", ".sqlite3"}
 SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._ -]+")
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 
@@ -56,6 +57,10 @@ def create_import(file: Annotated[UploadFile, File()]) -> dict[str, object]:
     if not file.filename:
         raise ValidationError("Uploaded file must have a filename.")
     filename = _safe_filename(file.filename)
+    extension = Path(filename).suffix.casefold()
+    if extension not in ALLOWED_IMPORT_EXTENSIONS:
+        allowed = ", ".join(sorted(ALLOWED_IMPORT_EXTENSIONS))
+        raise ValidationError(f"Unsupported import file extension: {extension or '(none)'}. Allowed: {allowed}")
     upload_dir = UPLOAD_DIR.resolve()
     upload_dir.mkdir(parents=True, exist_ok=True)
     source_path = upload_dir / f"{_short_token()}_{filename}"
