@@ -21,7 +21,6 @@ web = [
 ]
 dev = [
     "fastapi",
-    "httpx",
     "httpx2",
     "python-multipart",
     "pytest",

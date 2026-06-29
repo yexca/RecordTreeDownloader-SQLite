@@ -5,8 +5,8 @@ import json
 from pathlib import Path
 import time
 
+import httpx2
 import pytest
-from fastapi.testclient import TestClient
 
 from recordtree.app import RecordTreeApp
 from recordtree.db import connect
@@ -15,6 +15,13 @@ from recordtree.models import ImportRecord, LinkItem, MegaCommandResult, MegaLog
 from recordtree.repositories import ImportRepository, utc_now_sql
 from recordtree.web.api import app
 from recordtree.web.serializers import to_json_safe
+
+pytestmark = pytest.mark.anyio
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
 
 
 @dataclass(frozen=True)
@@ -94,13 +101,13 @@ def _insert_download(conn, group_id: int, link_id: int, status: str) -> None:
     )
 
 
-def test_health_and_init_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_health_and_init_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
-    client = TestClient(app)
+    async with _test_client() as client:
+        response = await client.get("/api/health")
+        assert response.json() == {"status": "ok"}
 
-    assert client.get("/api/health").json() == {"status": "ok"}
-
-    response = client.post("/api/init")
+        response = await client.post("/api/init")
 
     assert response.status_code == 200
     payload = response.json()
@@ -109,70 +116,74 @@ def test_health_and_init_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert (tmp_path / "env" / "recordtree.sqlite3").exists()
 
 
-def test_search_detail_stats_and_download_plan_endpoints(
+async def test_search_detail_stats_and_download_plan_endpoints(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     group_id = _setup_record(tmp_path, monkeypatch)
-    client = TestClient(app)
+    async with _test_client() as client:
+        actors = (await client.get("/api/actors", params={"query": "api"})).json()
+        assert actors[0]["name"] == "API Actor"
+        assert actors[0]["record_count"] == 1
 
-    actors = client.get("/api/actors", params={"query": "api"}).json()
-    assert actors[0]["name"] == "API Actor"
-    assert actors[0]["record_count"] == 1
+        actor_records = (await client.get(f"/api/actors/{actors[0]['id']}/records")).json()
+        assert actor_records[0]["id"] == group_id
 
-    actor_records = client.get(f"/api/actors/{actors[0]['id']}/records").json()
-    assert actor_records[0]["id"] == group_id
+        assert (await client.get("/api/records/search/title", params={"query": "asmr"})).json()[0]["id"] == group_id
+        assert (await client.get("/api/records/search/source", params={"query": "nico"})).json()[0]["id"] == group_id
+        assert (
+            await client.get(
+                "/api/records/search/date",
+                params={"from": "2026-01-01", "to": "2026-01-31"},
+            )
+        ).json()[0]["id"] == group_id
+        assert (await client.get("/api/records/undownloaded")).json()[0]["id"] == group_id
 
-    assert client.get("/api/records/search/title", params={"query": "asmr"}).json()[0]["id"] == group_id
-    assert client.get("/api/records/search/source", params={"query": "nico"}).json()[0]["id"] == group_id
-    assert client.get("/api/records/search/date", params={"from": "2026-01-01", "to": "2026-01-31"}).json()[0]["id"] == group_id
-    assert client.get("/api/records/undownloaded").json()[0]["id"] == group_id
+        detail = (await client.get(f"/api/records/{group_id}")).json()
+        assert detail["downloaded"] == "partial"
+        assert len(detail["links"]) == 3
 
-    detail = client.get(f"/api/records/{group_id}").json()
-    assert detail["downloaded"] == "partial"
-    assert len(detail["links"]) == 3
+        stats = (await client.get("/api/stats")).json()
+        assert stats["total_record_groups"] == 1
+        assert stats["downloaded_partial"] == 1
 
-    stats = client.get("/api/stats").json()
-    assert stats["total_record_groups"] == 1
-    assert stats["downloaded_partial"] == 1
-
-    plan = client.post(
-        f"/api/records/{group_id}/download-plan",
-        json={"types": ["mp4", "m4a"], "only_undownloaded": True},
-    ).json()
+        plan = (
+            await client.post(
+                f"/api/records/{group_id}/download-plan",
+                json={"types": ["mp4", "m4a"], "only_undownloaded": True},
+            )
+        ).json()
     assert plan["record_group_id"] == group_id
     assert plan["output_dir"].endswith(f"downloads\\{group_id}") or plan["output_dir"].endswith(f"downloads/{group_id}")
     assert [link["file_type"] for link in plan["selected_links"]] == [".m4a"]
     assert plan["type_filter"] == [".m4a", ".mp4"]
 
 
-def test_api_maps_project_errors_to_http_responses(
+async def test_api_maps_project_errors_to_http_responses(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _setup_record(tmp_path, monkeypatch)
-    client = TestClient(app)
+    async with _test_client() as client:
+        bad_limit = await client.get("/api/actors", params={"query": "api", "limit": 0})
+        assert bad_limit.status_code == 400
+        assert bad_limit.json()["error"] == "ValidationError"
 
-    bad_limit = client.get("/api/actors", params={"query": "api", "limit": 0})
-    assert bad_limit.status_code == 400
-    assert bad_limit.json()["error"] == "ValidationError"
+        missing = await client.get("/api/records/999999")
+        assert missing.status_code == 404
+        assert missing.json()["error"] == "NotFoundError"
 
-    missing = client.get("/api/records/999999")
-    assert missing.status_code == 404
-    assert missing.json()["error"] == "NotFoundError"
-
-    bad_date = client.get("/api/records/search/date")
-    assert bad_date.status_code == 400
-    assert bad_date.json()["error"] == "ValidationError"
+        bad_date = await client.get("/api/records/search/date")
+        assert bad_date.status_code == 400
+        assert bad_date.json()["error"] == "ValidationError"
 
 
-def test_import_upload_creates_background_job_and_reports_result(
+async def test_import_upload_creates_background_job_and_reports_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.chdir(tmp_path)
     RecordTreeApp().init()
-    client = TestClient(app)
     payload = json.dumps(
         [
             {
@@ -196,43 +207,43 @@ def test_import_upload_creates_background_job_and_reports_result(
         ]
     ).encode("utf-8")
 
-    response = client.post(
-        "/api/imports",
-        files={"file": ("../unsafe fixture.json", payload, "application/json")},
-    )
+    async with _test_client() as client:
+        response = await client.post(
+            "/api/imports",
+            files={"file": ("../unsafe fixture.json", payload, "application/json")},
+        )
 
-    assert response.status_code == 200
-    created = response.json()
-    assert created["status"] in {"queued", "running", "completed"}
-    job_id = created["job_id"]
+        assert response.status_code == 200
+        created = response.json()
+        assert created["status"] in {"queued", "running", "completed"}
+        job_id = created["job_id"]
 
-    job = _wait_for_job(client, job_id)
-    assert job["status"] == "completed"
-    assert job["progress"]["completed_rows"] == 1
-    assert job["progress"]["total_rows"] == 1
-    assert job["result"]["import_id"] >= 1
-    assert job["result"]["source_type"] == "json"
-    assert job["result"]["status"] == "completed"
-    assert job["result"]["stats"]["inserted_groups"] == 1
-    assert Path(job["result"]["source_path"]).parent == (tmp_path / "files" / "uploads").resolve()
-    assert ".." not in Path(job["result"]["source_path"]).name
+        job = await _wait_for_job(client, job_id)
+        assert job["status"] == "completed"
+        assert job["progress"]["completed_rows"] == 1
+        assert job["progress"]["total_rows"] == 1
+        assert job["result"]["import_id"] >= 1
+        assert job["result"]["source_type"] == "json"
+        assert job["result"]["status"] == "completed"
+        assert job["result"]["stats"]["inserted_groups"] == 1
+        assert Path(job["result"]["source_path"]).parent == (tmp_path / "files" / "uploads").resolve()
+        assert ".." not in Path(job["result"]["source_path"]).name
 
-    events = client.get(f"/api/jobs/{job_id}/events")
-    assert events.status_code == 200
-    assert "event: completed" in events.text
+        events = await client.get(f"/api/jobs/{job_id}/events")
+        assert events.status_code == 200
+        assert "event: completed" in events.text
 
 
-def test_import_upload_rejects_unsupported_extension_before_saving(
+async def test_import_upload_rejects_unsupported_extension_before_saving(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    client = TestClient(app)
-
-    response = client.post(
-        "/api/imports",
-        files={"file": ("notes.txt", b"not importable", "text/plain")},
-    )
+    async with _test_client() as client:
+        response = await client.post(
+            "/api/imports",
+            files={"file": ("notes.txt", b"not importable", "text/plain")},
+        )
 
     assert response.status_code == 400
     assert response.json()["error"] == "ValidationError"
@@ -240,33 +251,31 @@ def test_import_upload_rejects_unsupported_extension_before_saving(
     assert not (tmp_path / "files" / "uploads").exists()
 
 
-def test_import_job_reports_failed_status_for_bad_source(
+async def test_import_job_reports_failed_status_for_bad_source(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.chdir(tmp_path)
     RecordTreeApp().init()
-    client = TestClient(app)
+    async with _test_client() as client:
+        response = await client.post(
+            "/api/imports",
+            files={"file": ("broken.json", b"{not-json", "application/json")},
+        )
 
-    response = client.post(
-        "/api/imports",
-        files={"file": ("broken.json", b"{not-json", "application/json")},
-    )
-
-    assert response.status_code == 200
-    job = _wait_for_job(client, response.json()["job_id"])
+        assert response.status_code == 200
+        job = await _wait_for_job(client, response.json()["job_id"])
     assert job["status"] == "failed"
     assert job["finished_at"] is not None
     assert job["error"]
     assert any(event["type"] == "failed" for event in job["events"])
 
 
-def test_download_job_records_output_chunks(
+async def test_download_job_records_output_chunks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     group_id = _setup_record(tmp_path, monkeypatch)
-    client = TestClient(app)
     monkeypatch.setattr("recordtree.mega.resolve_executable", lambda configured: configured)
     monkeypatch.setattr(
         "recordtree.mega.check_login",
@@ -286,41 +295,40 @@ def test_download_job_records_output_chunks(
 
     monkeypatch.setattr("recordtree.mega.download_link", fake_download)
 
-    response = client.post(
-        "/api/downloads",
-        json={
-            "record_id_or_key": str(group_id),
-            "types": "m4a",
-            "include_par2": False,
-            "only_undownloaded": True,
-        },
-    )
+    async with _test_client() as client:
+        response = await client.post(
+            "/api/downloads",
+            json={
+                "record_id_or_key": str(group_id),
+                "types": "m4a",
+                "include_par2": False,
+                "only_undownloaded": True,
+            },
+        )
 
-    assert response.status_code == 200
-    job = _wait_for_job(client, response.json()["job_id"])
-    assert job["kind"] == "download"
-    assert job["status"] == "completed"
-    assert job["target"] == {"record_id_or_key": str(group_id)}
-    assert job["result"]["status"] == "completed"
-    assert job["result"]["completed"] == 1
-    assert [
-        event["data"]["chunk"]
-        for event in job["events"]
-        if event["type"] == "output"
-    ] == ["downloading ", "100%\n"]
+        assert response.status_code == 200
+        job = await _wait_for_job(client, response.json()["job_id"])
+        assert job["kind"] == "download"
+        assert job["status"] == "completed"
+        assert job["target"] == {"record_id_or_key": str(group_id)}
+        assert job["result"]["status"] == "completed"
+        assert job["result"]["completed"] == 1
+        assert [
+            event["data"]["chunk"]
+            for event in job["events"]
+            if event["type"] == "output"
+        ] == ["downloading ", "100%\n"]
 
-    events = client.get(f"/api/jobs/{response.json()['job_id']}/events")
-    assert "event: output" in events.text
-    assert "100%" in events.text
+        events = await client.get(f"/api/jobs/{response.json()['job_id']}/events")
+        assert "event: output" in events.text
+        assert "100%" in events.text
 
 
-def test_actor_download_job_runs_selected_undownloaded_records(
+async def test_actor_download_job_runs_selected_undownloaded_records(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     group_id = _setup_record(tmp_path, monkeypatch)
-    client = TestClient(app)
-    actor_id = client.get("/api/actors", params={"query": "api"}).json()[0]["id"]
     monkeypatch.setattr("recordtree.mega.resolve_executable", lambda configured: configured)
     monkeypatch.setattr(
         "recordtree.mega.check_login",
@@ -331,33 +339,34 @@ def test_actor_download_job_runs_selected_undownloaded_records(
         lambda *_args, **_kwargs: MegaCommandResult(0, "ok", ""),
     )
 
-    response = client.post(
-        "/api/downloads/actor",
-        json={
-            "actor_id": actor_id,
-            "count": 1,
-            "types": "m4a",
-            "include_par2": False,
-        },
-    )
+    async with _test_client() as client:
+        actor_id = (await client.get("/api/actors", params={"query": "api"})).json()[0]["id"]
+        response = await client.post(
+            "/api/downloads/actor",
+            json={
+                "actor_id": actor_id,
+                "count": 1,
+                "types": "m4a",
+                "include_par2": False,
+            },
+        )
 
-    assert response.status_code == 200
-    job = _wait_for_job(client, response.json()["job_id"])
-    assert job["kind"] == "download"
-    assert job["status"] == "completed"
-    assert job["target"] == {"actor_id": actor_id}
-    assert job["result"]["actor_id"] == actor_id
-    assert job["result"]["selected_count"] == 1
-    assert job["result"]["results"][0]["record_group_id"] == group_id
-    assert job["result"]["results"][0]["status"] == "completed"
+        assert response.status_code == 200
+        job = await _wait_for_job(client, response.json()["job_id"])
+        assert job["kind"] == "download"
+        assert job["status"] == "completed"
+        assert job["target"] == {"actor_id": actor_id}
+        assert job["result"]["actor_id"] == actor_id
+        assert job["result"]["selected_count"] == 1
+        assert job["result"]["results"][0]["record_group_id"] == group_id
+        assert job["result"]["results"][0]["status"] == "completed"
 
 
-def test_blocked_download_job_reports_failed_status_and_result(
+async def test_blocked_download_job_reports_failed_status_and_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     group_id = _setup_record(tmp_path, monkeypatch)
-    client = TestClient(app)
     monkeypatch.setattr("recordtree.mega.resolve_executable", lambda configured: configured)
     monkeypatch.setattr(
         "recordtree.mega.check_login",
@@ -368,31 +377,31 @@ def test_blocked_download_job_reports_failed_status_and_result(
         lambda *_args, **_kwargs: MegaCommandResult(0, "ok", ""),
     )
 
-    response = client.post(
-        "/api/downloads",
-        json={
-            "record_id_or_key": str(group_id),
-            "types": "m4a",
-            "include_par2": False,
-            "only_undownloaded": True,
-        },
-    )
+    async with _test_client() as client:
+        response = await client.post(
+            "/api/downloads",
+            json={
+                "record_id_or_key": str(group_id),
+                "types": "m4a",
+                "include_par2": False,
+                "only_undownloaded": True,
+            },
+        )
 
-    assert response.status_code == 200
-    job = _wait_for_job(client, response.json()["job_id"])
-    assert job["status"] == "failed"
-    assert job["result"]["status"] == "blocked"
-    assert "MEGA is not logged in" in job["error"]
-    assert any(event["type"] == "failed" for event in job["events"])
+        assert response.status_code == 200
+        job = await _wait_for_job(client, response.json()["job_id"])
+        assert job["status"] == "failed"
+        assert job["result"]["status"] == "blocked"
+        assert "MEGA is not logged in" in job["error"]
+        assert any(event["type"] == "failed" for event in job["events"])
 
 
-def test_missing_job_returns_404() -> None:
-    client = TestClient(app)
+async def test_missing_job_returns_404() -> None:
+    async with _test_client() as client:
+        response = await client.get("/api/jobs/not-a-real-job")
 
-    response = client.get("/api/jobs/not-a-real-job")
-
-    assert response.status_code == 404
-    assert response.json()["error"] == "NotFoundError"
+        assert response.status_code == 404
+        assert response.json()["error"] == "NotFoundError"
 
 
 def test_to_json_safe_serializes_dataclasses_paths_and_sets(tmp_path: Path) -> None:
@@ -410,11 +419,16 @@ def test_to_json_safe_serializes_dataclasses_paths_and_sets(tmp_path: Path) -> N
     }
 
 
-def _wait_for_job(client: TestClient, job_id: str) -> dict[str, object]:
+def _test_client() -> httpx2.AsyncClient:
+    transport = httpx2.ASGITransport(app=app)
+    return httpx2.AsyncClient(transport=transport, base_url="http://testserver")
+
+
+async def _wait_for_job(client: httpx2.AsyncClient, job_id: str) -> dict[str, object]:
     deadline = time.monotonic() + 5
     last_payload: dict[str, object] | None = None
     while time.monotonic() < deadline:
-        response = client.get(f"/api/jobs/{job_id}")
+        response = await client.get(f"/api/jobs/{job_id}")
         assert response.status_code == 200
         last_payload = response.json()
         if last_payload["status"] in {"completed", "failed"}:
