@@ -12,7 +12,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconArrowLeft, IconRefresh, IconSearch } from '@tabler/icons-react';
+import { IconRefresh, IconSearch } from '@tabler/icons-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { PlatformSummary, RecordSummary } from '../api/types';
@@ -273,39 +273,22 @@ export default function Platform() {
             </Stack>
           ) : (
             <>
-              <Group className="section actor-summary" justify="space-between" align="start" wrap="nowrap">
-                <div>
-                  <Title order={3} size="h4">
-                    {selectedPlatform.name}
-                  </Title>
-                  <Group gap="xs" mt={4}>
-                    <Badge variant="light">{selectedPlatform.record_count} records</Badge>
-                    <Badge variant="light" color={selectedPlatform.undownloaded_count > 0 ? 'yellow' : 'teal'}>
-                      {selectedPlatform.undownloaded_count} undownloaded
-                    </Badge>
-                  </Group>
-                </div>
-                <ActionIcon
-                  variant="subtle"
-                  aria-label="Clear platform selection"
-                  onClick={() => {
-                    setSelectedPlatform(null);
-                    setRecords([]);
-                    setSelectedRecordId(null);
-                  }}
-                >
-                  <IconArrowLeft size={18} />
-                </ActionIcon>
-              </Group>
-
               {selectedRecordId ? (
                 <RecordDetail idOrKey={String(selectedRecordId)} onBack={() => setSelectedRecordId(null)} />
               ) : (
                 <Stack p="md" className="section" gap="md">
                   <Group justify="space-between" align="center">
-                    <Title order={3} size="h4">
-                      Records
-                    </Title>
+                    <div>
+                      <Title order={3} size="h4">
+                        Records
+                      </Title>
+                      <Group gap="xs" mt={4}>
+                        <Badge variant="light">{selectedPlatform.record_count} records</Badge>
+                        <Badge variant="light" color={selectedPlatform.undownloaded_count > 0 ? 'yellow' : 'teal'}>
+                          {selectedPlatform.undownloaded_count} undownloaded
+                        </Badge>
+                      </Group>
+                    </div>
                     <Group gap="xs" wrap="nowrap">
                       <Text size="xs" c="dimmed">
                         Sorted by delivery date

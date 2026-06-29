@@ -12,7 +12,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconArrowLeft, IconRefresh, IconSearch } from '@tabler/icons-react';
+import { IconRefresh, IconSearch } from '@tabler/icons-react';
 import { FormEvent, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { ActorSummary, RecordSummary } from '../api/types';
@@ -273,39 +273,22 @@ export default function Actors() {
             </Stack>
           ) : (
             <>
-              <Group className="section actor-summary" justify="space-between" align="start" wrap="nowrap">
-                <div>
-                  <Title order={3} size="h4">
-                    {selectedActor.name}
-                  </Title>
-                  <Group gap="xs" mt={4}>
-                    <Badge variant="light">{selectedActor.record_count} records</Badge>
-                    <Badge variant="light" color={selectedActor.undownloaded_count > 0 ? 'yellow' : 'teal'}>
-                      {selectedActor.undownloaded_count} undownloaded
-                    </Badge>
-                  </Group>
-                </div>
-                <ActionIcon
-                  variant="subtle"
-                  aria-label="Clear actor selection"
-                  onClick={() => {
-                    setSelectedActor(null);
-                    setRecords([]);
-                    setSelectedRecordId(null);
-                  }}
-                >
-                  <IconArrowLeft size={18} />
-                </ActionIcon>
-              </Group>
-
               {selectedRecordId ? (
                 <RecordDetail idOrKey={String(selectedRecordId)} onBack={() => setSelectedRecordId(null)} />
               ) : (
                 <Stack p="md" className="section" gap="md">
                   <Group justify="space-between" align="center">
-                    <Title order={3} size="h4">
-                      Records
-                    </Title>
+                    <div>
+                      <Title order={3} size="h4">
+                        Records
+                      </Title>
+                      <Group gap="xs" mt={4}>
+                        <Badge variant="light">{selectedActor.record_count} records</Badge>
+                        <Badge variant="light" color={selectedActor.undownloaded_count > 0 ? 'yellow' : 'teal'}>
+                          {selectedActor.undownloaded_count} undownloaded
+                        </Badge>
+                      </Group>
+                    </div>
                     <Group gap="xs" wrap="nowrap">
                       <Text size="xs" c="dimmed">
                         Sorted by delivery date
