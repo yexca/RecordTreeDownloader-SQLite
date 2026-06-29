@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -52,7 +53,8 @@ class JobManager:
     def __init__(self, max_workers: int = 2) -> None:
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="recordtree-job")
         self._jobs: dict[str, Job] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._condition = threading.Condition(self._lock)
 
     def start_import(self, source_path: Path, app_factory: Callable[[], RecordTreeApp] = RecordTreeApp) -> Job:
         job = Job(id=uuid.uuid4().hex, kind="import", target={"source_path": source_path})
@@ -124,6 +126,38 @@ class JobManager:
             if job is None:
                 raise KeyError(job_id)
             return [event for event in job.events if event.index > after]
+
+    def stream_events(
+        self,
+        job_id: str,
+        after: int = 0,
+        keepalive_seconds: float = 15.0,
+    ):
+        next_index = max(0, after)
+        while True:
+            with self._condition:
+                job = self._jobs.get(job_id)
+                if job is None:
+                    raise KeyError(job_id)
+                pending = [event for event in job.events if event.index > next_index]
+                if pending:
+                    payloads = [_format_sse(event) for event in pending]
+                    next_index = pending[-1].index
+                    done = job.status in {"completed", "failed"}
+                else:
+                    if job.status in {"completed", "failed"}:
+                        return
+                    self._condition.wait(timeout=keepalive_seconds)
+                    latest_job = self._jobs.get(job_id)
+                    if latest_job is None:
+                        raise KeyError(job_id)
+                    has_new_events = any(event.index > next_index for event in latest_job.events)
+                    payloads = [] if has_new_events else [f": keepalive {int(time.time())}\n\n"]
+                    done = False
+            for payload in payloads:
+                yield payload
+            if done:
+                return
 
     def serialize(self, job: Job) -> dict[str, Any]:
         progress = None
@@ -266,14 +300,16 @@ class JobManager:
             self._add_event(self._jobs[job_id], event_type, data)
 
     def _add_event(self, job: Job, event_type: str, data: dict[str, Any]) -> None:
-        job.events.append(
-            JobEvent(
-                index=len(job.events) + 1,
-                type=event_type,
-                created_at=utc_now_iso(),
-                data=to_json_safe(data),
+        with self._condition:
+            job.events.append(
+                JobEvent(
+                    index=len(job.events) + 1,
+                    type=event_type,
+                    created_at=utc_now_iso(),
+                    data=to_json_safe(data),
+                )
             )
-        )
+            self._condition.notify_all()
 
 
 def _copy_job(job: Job) -> Job:

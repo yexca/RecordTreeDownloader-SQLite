@@ -65,6 +65,52 @@ export default function RecordDetail({
   useEffect(() => {
     if (!jobId) return;
     let cancelled = false;
+    const source = new EventSource(`/api/jobs/${encodeURIComponent(jobId)}/events?after=0`);
+    const handleEvent = (event: MessageEvent) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (!cancelled) {
+          setJob((current) => {
+            const base =
+              current ??
+              ({
+                id: jobId,
+                kind: 'download',
+                status: 'running',
+                created_at: '',
+                started_at: null,
+                finished_at: null,
+                progress: null,
+                target: null,
+                options: {},
+                events: [],
+                result: null,
+                error: null,
+              } as Job);
+            const events = base.events.some((item) => item.index === payload.index)
+              ? base.events
+              : [...base.events, payload];
+            return {
+              ...base,
+              events,
+              status: payload.type === 'completed' ? 'completed' : payload.type === 'failed' ? 'failed' : base.status,
+              result: payload.type === 'completed' || payload.type === 'failed' ? payload.data.result : base.result,
+              error: payload.type === 'failed' ? String(payload.data.error ?? 'Download failed') : base.error,
+            };
+          });
+        }
+      } catch {
+        // Polling below remains as a fallback.
+      }
+    };
+    source.onmessage = handleEvent;
+    source.addEventListener('running', handleEvent);
+    source.addEventListener('output', handleEvent);
+    source.addEventListener('completed', handleEvent);
+    source.addEventListener('failed', handleEvent);
+    source.onerror = () => {
+      source.close();
+    };
     const poll = async () => {
       try {
         const next = await api.job(jobId);
@@ -85,6 +131,7 @@ export default function RecordDetail({
     poll();
     return () => {
       cancelled = true;
+      source.close();
     };
   }, [jobId]);
 

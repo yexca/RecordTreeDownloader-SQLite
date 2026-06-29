@@ -23,7 +23,7 @@ from .jobs import JobManager
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     try:
-        RecordTreeApp().mark_interrupted_downloads()
+        RecordTreeApp().init()
     except RecordTreeError:
         pass
     yield
@@ -171,10 +171,10 @@ def get_job(job_id: str) -> dict[str, object]:
 @app.get("/api/jobs/{job_id}/events")
 def job_events(job_id: str, after: int = 0) -> StreamingResponse:
     try:
-        payloads = job_manager.sse_payloads(job_id, after)
+        payloads = job_manager.stream_events(job_id, after)
     except KeyError as error:
         raise NotFoundError(f"Job not found: {job_id}") from error
-    return StreamingResponse(iter(payloads), media_type="text/event-stream")
+    return StreamingResponse(payloads, media_type="text/event-stream")
 
 
 @app.get("/api/doctor")

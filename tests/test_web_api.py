@@ -14,6 +14,7 @@ from recordtree.importer.service import ImportService
 from recordtree.models import ImportRecord, LinkItem, MegaCommandResult, MegaLoginStatus
 from recordtree.repositories import ImportRepository, utc_now_sql
 from recordtree.web.api import app
+from recordtree.web.jobs import JobManager
 from recordtree.web.serializers import to_json_safe
 
 pytestmark = pytest.mark.anyio
@@ -114,6 +115,13 @@ async def test_health_and_init_endpoints(tmp_path: Path, monkeypatch: pytest.Mon
     assert payload["schema_version"] == "2"
     assert Path(payload["database_path"]) == tmp_path / "env" / "recordtree.sqlite3"
     assert (tmp_path / "env" / "recordtree.sqlite3").exists()
+
+
+async def test_web_lifespan_initializes_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    async with app.router.lifespan_context(app):
+        assert (tmp_path / "env" / "recordtree.sqlite3").exists()
 
 
 async def test_search_detail_stats_and_download_plan_endpoints(
@@ -685,6 +693,19 @@ def test_to_json_safe_serializes_dataclasses_paths_and_sets(tmp_path: Path) -> N
     }
 
 
+def test_job_event_stream_waits_for_new_events(tmp_path: Path) -> None:
+    manager = JobManager()
+    source = tmp_path / "stream.json"
+    source.write_text("[]", encoding="utf-8")
+    job = manager.start_import(source, app_factory=lambda: _BlockingImportApp())
+    stream = manager.stream_events(job.id, after=0, keepalive_seconds=1)
+
+    assert "event: queued" in next(stream)
+    assert "event: running" in next(stream)
+    assert "event: progress" in next(stream)
+    assert "event: completed" in next(stream)
+
+
 def _test_client() -> httpx2.AsyncClient:
     transport = httpx2.ASGITransport(app=app)
     return httpx2.AsyncClient(transport=transport, base_url="http://testserver")
@@ -701,3 +722,22 @@ async def _wait_for_job(client: httpx2.AsyncClient, job_id: str) -> dict[str, ob
             return last_payload
         time.sleep(0.05)
     raise AssertionError(f"Job did not finish: {last_payload}")
+
+
+class _BlockingImportApp:
+    def import_file(self, _source_path: Path, progress_callback=None):
+        if progress_callback is not None:
+            progress_callback(
+                type(
+                    "Progress",
+                    (),
+                    {
+                        "phase": "Streaming",
+                        "source_type": "json",
+                        "source_path": _source_path,
+                        "completed_rows": 1,
+                        "total_rows": 1,
+                    },
+                )()
+            )
+        return {"ok": True}

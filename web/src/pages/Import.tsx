@@ -102,6 +102,36 @@ export default function ImportPage() {
 
   useEffect(() => {
     if (!job || job.status === 'completed' || job.status === 'failed') return;
+    let lastEventId = job.events.at(-1)?.index ?? 0;
+    const source = new EventSource(`/api/jobs/${encodeURIComponent(job.id)}/events?after=${lastEventId}`);
+    source.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        lastEventId = Number(payload.index ?? lastEventId);
+        setJob((current) => {
+          if (!current || current.id !== job.id) return current;
+          const events = current.events.some((item) => item.index === payload.index)
+            ? current.events
+            : [...current.events, payload];
+          return {
+            ...current,
+            events,
+            progress: payload.type === 'progress' ? payload.data : current.progress,
+            status: payload.type === 'completed' ? 'completed' : payload.type === 'failed' ? 'failed' : current.status,
+            result: payload.type === 'completed' ? payload.data.result : current.result,
+            error: payload.type === 'failed' ? String(payload.data.error ?? 'Import failed') : current.error,
+          };
+        });
+      } catch {
+        // Fall back to polling if an event cannot be parsed.
+      }
+    };
+    source.addEventListener('completed', source.onmessage);
+    source.addEventListener('failed', source.onmessage);
+    source.addEventListener('progress', source.onmessage);
+    source.onerror = () => {
+      source.close();
+    };
     timerRef.current = window.setInterval(async () => {
       try {
         setJob(asImportJob(await api.job(job.id)));
@@ -111,6 +141,7 @@ export default function ImportPage() {
     }, 1000);
     return () => {
       if (timerRef.current) window.clearInterval(timerRef.current);
+      source.close();
     };
   }, [job?.id, job?.status]);
 
