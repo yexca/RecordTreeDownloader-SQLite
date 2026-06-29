@@ -367,6 +367,7 @@ class RecordTreeApp:
             database_size_bytes=database_size,
             backup_dir=backup_dir,
             latest_backup=_latest_backup(backup_dir),
+            backups=_list_backups(backup_dir),
         )
 
     def backup_database(self) -> BackupSummary:
@@ -393,6 +394,26 @@ class RecordTreeApp:
             size_bytes=backup_path.stat().st_size,
             created_at=created_at,
         )
+
+    def list_backups(self) -> list[BackupSummary]:
+        config_path = config_module.ensure_config(Path("env/config.toml"))
+        app_config = config_module.load_config(config_path)
+        return _list_backups(app_config.logs_dir / "backups")
+
+    def backup_path(self, filename: str) -> Path:
+        if not filename.startswith("recordtree-") or not filename.endswith(".sqlite3"):
+            raise ValidationError("Backup filename is not valid.")
+        if Path(filename).name != filename:
+            raise ValidationError("Backup filename must not include a path.")
+        config_path = config_module.ensure_config(Path("env/config.toml"))
+        app_config = config_module.load_config(config_path)
+        backup_dir = (app_config.logs_dir / "backups").resolve()
+        backup_path = (backup_dir / filename).resolve()
+        if backup_dir not in backup_path.parents:
+            raise ValidationError("Backup filename is outside the backup directory.")
+        if not backup_path.exists() or not backup_path.is_file():
+            raise NotFoundError(f"Backup not found: {filename}")
+        return backup_path
 
     def database_integrity(self) -> IntegrityResult:
         conn = self._open_app_db()
@@ -514,6 +535,21 @@ class RecordTreeApp:
         return MaintenanceActionResult(
             ok=True,
             message="SQLite query planner statistics refreshed.",
+            started_at=started_at,
+            finished_at=finished_at,
+        )
+
+    def vacuum_database(self) -> MaintenanceActionResult:
+        started_at = _utc_iso()
+        conn = self._open_app_db()
+        try:
+            conn.execute("VACUUM")
+        finally:
+            conn.close()
+        finished_at = _utc_iso()
+        return MaintenanceActionResult(
+            ok=True,
+            message="SQLite database vacuum completed.",
             started_at=started_at,
             finished_at=finished_at,
         )
@@ -1165,20 +1201,25 @@ def _timestamp_for_filename() -> str:
 
 
 def _latest_backup(backup_dir: Path) -> BackupSummary | None:
+    backups = _list_backups(backup_dir)
+    return backups[0] if backups else None
+
+
+def _list_backups(backup_dir: Path) -> list[BackupSummary]:
     if not backup_dir.exists():
-        return None
-    backups = sorted(backup_dir.glob("recordtree-*.sqlite3"), key=lambda path: path.stat().st_mtime, reverse=True)
-    if not backups:
-        return None
-    latest = backups[0]
-    return BackupSummary(
-        path=latest,
-        size_bytes=latest.stat().st_size,
-        created_at=datetime.fromtimestamp(latest.stat().st_mtime, timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z"),
-    )
+        return []
+    backup_paths = sorted(backup_dir.glob("recordtree-*.sqlite3"), key=lambda path: path.stat().st_mtime, reverse=True)
+    return [
+        BackupSummary(
+            path=path,
+            size_bytes=path.stat().st_size,
+            created_at=datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z"),
+        )
+        for path in backup_paths
+    ]
 
 
 def _count_sql(conn, sql: str) -> int:

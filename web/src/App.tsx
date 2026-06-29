@@ -42,7 +42,7 @@ type Route =
   | 'import'
   | 'downloads'
   | 'settings'
-  | 'status'
+  | 'maintenance'
   | 'search-record'
   | 'record';
 
@@ -57,7 +57,7 @@ function parseHash(hash: string): { route: Route; recordId?: string } {
   if (route === 'import') return { route: 'import' };
   if (route === 'downloads') return { route: 'downloads' };
   if (route === 'settings') return { route: 'settings' };
-  if (route === 'status') return { route: 'status' };
+  if (route === 'maintenance' || route === 'status') return { route: 'maintenance' };
   if (route === 'records' && section) return { route: 'record', recordId: section };
   return { route: 'dashboard' };
 }
@@ -88,7 +88,7 @@ export default function App() {
       <Downloads />
     ) : route === 'settings' ? (
       <Settings />
-    ) : route === 'status' ? (
+    ) : route === 'maintenance' ? (
       <SystemStatus />
     ) : route === 'record' && recordId ? (
       <RecordDetail idOrKey={recordId} onBack={() => navigate('/records')} />
@@ -174,8 +174,8 @@ export default function App() {
         <NavLink
           label="Maintenance"
           leftSection={<IconSettings size={18} />}
-          active={route === 'status'}
-          onClick={() => navigate('/status')}
+          active={route === 'maintenance'}
+          onClick={() => navigate('/maintenance')}
         />
       </AppShell.Navbar>
 

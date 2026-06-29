@@ -30,6 +30,7 @@ export interface MaintenanceSummary {
   database_size_bytes: number | null;
   backup_dir: string;
   latest_backup: BackupSummary | null;
+  backups: BackupSummary[];
 }
 
 export interface MaintenanceActionResult {

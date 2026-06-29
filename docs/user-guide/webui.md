@@ -24,7 +24,7 @@ http://127.0.0.1:8000
 - Search: actor, title, source, date range, and undownloaded records.
 - Record detail: metadata, active links, link status, and download planning.
 - Import: upload Excel, legacy JSON, or legacy SQLite files and track background progress.
-- System status: configuration, database, writable paths, MEGAcmd availability, and login state.
+- Maintenance: configuration, database backups, writable paths, MEGAcmd availability, and integrity checks.
 
 ## Downloads
 

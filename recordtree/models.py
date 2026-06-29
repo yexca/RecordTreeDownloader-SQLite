@@ -296,6 +296,7 @@ class MaintenanceSummary:
     database_size_bytes: int | None
     backup_dir: Path
     latest_backup: BackupSummary | None
+    backups: list[BackupSummary]
 
 
 @dataclass(frozen=True)

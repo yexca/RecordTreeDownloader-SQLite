@@ -61,6 +61,7 @@ export const api = {
     request<BackupSummary>('/api/maintenance/backup', {
       method: 'POST',
     }),
+  maintenanceBackups: () => request<BackupSummary[]>('/api/maintenance/backups'),
   maintenanceIntegrity: () =>
     request<IntegrityResult>('/api/maintenance/integrity-check', {
       method: 'POST',
@@ -68,6 +69,10 @@ export const api = {
   maintenanceOrphans: () => request<OrphanReport>('/api/maintenance/orphans'),
   maintenanceAnalyze: () =>
     request<MaintenanceActionResult>('/api/maintenance/analyze', {
+      method: 'POST',
+    }),
+  maintenanceVacuum: () =>
+    request<MaintenanceActionResult>('/api/maintenance/vacuum', {
       method: 'POST',
     }),
   megaStatus: () => request<MegaAccountStatus>('/api/mega/status'),

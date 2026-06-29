@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, File, Query, UploadFile
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from recordtree.app import RecordTreeApp
@@ -218,6 +218,21 @@ def maintenance_backup() -> dict[str, object]:
     return _serialize(RecordTreeApp().backup_database())
 
 
+@app.get("/api/maintenance/backups")
+def maintenance_backups() -> list[dict[str, object]]:
+    return _serialize(RecordTreeApp().list_backups())
+
+
+@app.get("/api/maintenance/backups/{filename}")
+def maintenance_download_backup(filename: str) -> FileResponse:
+    backup_path = RecordTreeApp().backup_path(filename)
+    return FileResponse(
+        backup_path,
+        media_type="application/vnd.sqlite3",
+        filename=backup_path.name,
+    )
+
+
 @app.post("/api/maintenance/integrity-check")
 def maintenance_integrity_check() -> dict[str, object]:
     return _serialize(RecordTreeApp().database_integrity())
@@ -231,6 +246,11 @@ def maintenance_orphans() -> dict[str, object]:
 @app.post("/api/maintenance/analyze")
 def maintenance_analyze() -> dict[str, object]:
     return _serialize(RecordTreeApp().analyze_database())
+
+
+@app.post("/api/maintenance/vacuum")
+def maintenance_vacuum() -> dict[str, object]:
+    return _serialize(RecordTreeApp().vacuum_database())
 
 
 @app.get("/api/actors")

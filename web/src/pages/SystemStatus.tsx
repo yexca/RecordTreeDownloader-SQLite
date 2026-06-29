@@ -1,6 +1,6 @@
 import { Button, Group, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconDatabaseExport, IconRefresh, IconSettings, IconStethoscope } from '@tabler/icons-react';
+import { IconDatabaseExport, IconDownload, IconRefresh, IconSettings, IconStethoscope } from '@tabler/icons-react';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type {
@@ -18,7 +18,8 @@ type ActionResult =
   | { kind: 'backup'; title: string; result: BackupSummary }
   | { kind: 'integrity'; title: string; result: IntegrityResult }
   | { kind: 'orphans'; title: string; result: OrphanReport }
-  | { kind: 'analyze'; title: string; result: MaintenanceActionResult };
+  | { kind: 'analyze'; title: string; result: MaintenanceActionResult }
+  | { kind: 'vacuum'; title: string; result: MaintenanceActionResult };
 
 const orphanLabels: Record<keyof Omit<OrphanReport, 'ok'>, string> = {
   actors_without_records: 'Actors without records',
@@ -43,6 +44,15 @@ export default function SystemStatus() {
       setSummary(await api.maintenanceSummary());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
+    }
+  };
+
+  const refreshSummary = async () => {
+    setBusy('refresh');
+    try {
+      await loadSummary();
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -101,7 +111,7 @@ export default function SystemStatus() {
           <Button
             variant="light"
             leftSection={<IconRefresh size={16} />}
-            onClick={() => void loadSummary()}
+            onClick={() => void refreshSummary()}
             loading={busy === 'refresh'}
           >
             Run Diagnostics
@@ -132,7 +142,7 @@ export default function SystemStatus() {
             Settings
           </Button>
         </Group>
-        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }}>
           <Button
             variant="light"
             leftSection={<IconDatabaseExport size={16} />}
@@ -189,6 +199,20 @@ export default function SystemStatus() {
           >
             Analyze database
           </Button>
+          <Button
+            variant="light"
+            leftSection={<IconRefresh size={16} />}
+            loading={busy === 'vacuum'}
+            onClick={() =>
+              void runAction('vacuum', 'Vacuum database', async () => ({
+                kind: 'vacuum',
+                title: 'Vacuum database',
+                result: await api.maintenanceVacuum(),
+              }))
+            }
+          >
+            Vacuum database
+          </Button>
         </SimpleGrid>
         <div className="table-scroll">
           <Table withTableBorder verticalSpacing={6} fz="sm">
@@ -213,6 +237,8 @@ export default function SystemStatus() {
       </Stack>
 
       {lastResult ? <ResultPanel action={lastResult} /> : null}
+
+      <BackupTable backups={summary.backups} />
 
       <SimpleGrid cols={{ base: 1, lg: 2 }}>
         <CheckTable title="Paths" checks={pathChecks} />
@@ -280,6 +306,7 @@ function ResultPanel({ action }: { action: ActionResult }) {
             ['Path', action.result.path],
             ['Size', formatBytes(action.result.size_bytes)],
             ['Created', action.result.created_at],
+            ['Download', backupDownloadUrl(action.result.path)],
           ]}
         />
       ) : action.kind === 'integrity' ? (
@@ -300,6 +327,60 @@ function ResultPanel({ action }: { action: ActionResult }) {
   );
 }
 
+function BackupTable({ backups }: { backups: BackupSummary[] }) {
+  return (
+    <Stack p="md" className="section">
+      <Group justify="space-between">
+        <Title order={3} size="h4">
+          Backup History
+        </Title>
+        <Text size="sm" c="dimmed">
+          {backups.length} backup{backups.length === 1 ? '' : 's'}
+        </Text>
+      </Group>
+      {backups.length === 0 ? (
+        <Text size="sm" c="dimmed">
+          No database backups have been created yet.
+        </Text>
+      ) : (
+        <div className="table-scroll">
+          <Table striped withTableBorder verticalSpacing={6} fz="sm">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>File</Table.Th>
+                <Table.Th className="nowrap">Size</Table.Th>
+                <Table.Th className="nowrap">Created</Table.Th>
+                <Table.Th className="nowrap" />
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {backups.map((backup) => (
+                <Table.Tr key={backup.path}>
+                  <Table.Td className="url-cell">{backup.path}</Table.Td>
+                  <Table.Td className="nowrap">{formatBytes(backup.size_bytes)}</Table.Td>
+                  <Table.Td className="nowrap">{backup.created_at}</Table.Td>
+                  <Table.Td className="nowrap">
+                    <Button
+                      component="a"
+                      href={backupDownloadUrl(backup.path)}
+                      download
+                      variant="subtle"
+                      size="xs"
+                      leftSection={<IconDownload size={14} />}
+                    >
+                      Download
+                    </Button>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </div>
+      )}
+    </Stack>
+  );
+}
+
 function KeyValueTable({ rows }: { rows: [string, string][] }) {
   return (
     <div className="table-scroll">
@@ -308,13 +389,27 @@ function KeyValueTable({ rows }: { rows: [string, string][] }) {
           {rows.map(([key, value]) => (
             <Table.Tr key={key}>
               <Table.Th className="nowrap">{key}</Table.Th>
-              <Table.Td className="url-cell">{value}</Table.Td>
+              <Table.Td className="url-cell">
+                {key === 'Download' ? (
+                  <Button component="a" href={value} download variant="subtle" size="xs" leftSection={<IconDownload size={14} />}>
+                    Download backup
+                  </Button>
+                ) : (
+                  value
+                )}
+              </Table.Td>
             </Table.Tr>
           ))}
         </Table.Tbody>
       </Table>
     </div>
   );
+}
+
+function backupDownloadUrl(path: string) {
+  const normalized = path.replaceAll('\\', '/');
+  const filename = normalized.split('/').pop() ?? '';
+  return `/api/maintenance/backups/${encodeURIComponent(filename)}`;
 }
 
 function OrphanTable({ report }: { report: OrphanReport }) {

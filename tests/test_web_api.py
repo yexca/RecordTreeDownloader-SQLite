@@ -228,6 +228,14 @@ async def test_maintenance_endpoints_report_and_run_safe_actions(
         backup = (await client.post("/api/maintenance/backup")).json()
         assert Path(backup["path"]).exists()
         assert backup["size_bytes"] > 0
+        backup_name = Path(backup["path"]).name
+
+        backups = (await client.get("/api/maintenance/backups")).json()
+        assert backups[0]["path"] == backup["path"]
+
+        downloaded = await client.get(f"/api/maintenance/backups/{backup_name}")
+        assert downloaded.status_code == 200
+        assert downloaded.content.startswith(b"SQLite format 3")
 
         integrity = (await client.post("/api/maintenance/integrity-check")).json()
         assert integrity["ok"] is True
@@ -241,6 +249,13 @@ async def test_maintenance_endpoints_report_and_run_safe_actions(
         analyze = (await client.post("/api/maintenance/analyze")).json()
         assert analyze["ok"] is True
         assert "refreshed" in analyze["message"]
+
+        vacuum = (await client.post("/api/maintenance/vacuum")).json()
+        assert vacuum["ok"] is True
+        assert "vacuum" in vacuum["message"].casefold()
+
+        bad_backup = await client.get("/api/maintenance/backups/../env/recordtree.sqlite3")
+        assert bad_backup.status_code in {400, 404}
 
 
 async def test_api_maps_project_errors_to_http_responses(
