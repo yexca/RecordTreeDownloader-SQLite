@@ -101,6 +101,20 @@ body {
   padding: 10px 12px;
 }
 
+.actor-search-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) 36px;
+}
+
+.actor-search-mode,
+.actor-search-input {
+  min-width: 0;
+}
+
+.actor-page-size {
+  width: 104px;
+}
+
 .actor-list-item {
   display: flex;
   width: 100%;

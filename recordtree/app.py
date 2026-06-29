@@ -235,6 +235,13 @@ class RecordTreeApp:
         finally:
             conn.close()
 
+    def get_actor(self, actor_id: int) -> ActorSummary:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).get_actor(actor_id)
+        finally:
+            conn.close()
+
     def list_actor_records(self, actor_id: int, limit: int = 50) -> list[RecordSummary]:
         conn = self._open_app_db()
         try:

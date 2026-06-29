@@ -126,6 +126,9 @@ async def test_search_detail_stats_and_download_plan_endpoints(
         assert actors[0]["name"] == "API Actor"
         assert actors[0]["record_count"] == 1
 
+        actor_detail = (await client.get(f"/api/actors/{actors[0]['id']}")).json()
+        assert actor_detail == actors[0]
+
         actor_records = (await client.get(f"/api/actors/{actors[0]['id']}/records")).json()
         assert actor_records[0]["id"] == group_id
 

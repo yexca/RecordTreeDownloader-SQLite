@@ -1,12 +1,11 @@
 import {
   ActionIcon,
   Badge,
-  Button,
   Group,
   Pagination,
   ScrollArea,
+  Select,
   Stack,
-  Table,
   Text,
   TextInput,
   Title,
@@ -23,12 +22,15 @@ import { RecordTable } from '../components/RecordTable';
 import RecordDetail from './RecordDetail';
 
 const ACTOR_FETCH_LIMIT = 500;
-const ACTORS_PER_PAGE = 25;
+const DEFAULT_ACTORS_PER_PAGE = 25;
 const RECORD_FETCH_LIMIT = 500;
+type SearchMode = 'name' | 'id';
 
 export default function Actors() {
   const [query, setQuery] = useState('');
+  const [searchMode, setSearchMode] = useState<SearchMode>('name');
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(DEFAULT_ACTORS_PER_PAGE);
   const [actors, setActors] = useState<ActorSummary[]>([]);
   const [selectedActor, setSelectedActor] = useState<ActorSummary | null>(null);
   const [records, setRecords] = useState<RecordSummary[]>([]);
@@ -43,7 +45,11 @@ export default function Actors() {
     setLoadingActors(true);
     setActorError(null);
     try {
-      const nextActors = await api.actors(query, ACTOR_FETCH_LIMIT);
+      const id = Number(query.trim());
+      const nextActors =
+        searchMode === 'id' && Number.isInteger(id) && id > 0
+          ? [await api.actor(id)]
+          : await api.actors(searchMode === 'name' ? query : '', ACTOR_FETCH_LIMIT);
       setActors(nextActors);
       setPage(1);
       if (selectedActor && !nextActors.some((actor) => actor.id === selectedActor.id)) {
@@ -84,10 +90,16 @@ export default function Actors() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const totalPages = Math.max(1, Math.ceil(actors.length / ACTORS_PER_PAGE));
-  const pageActors = actors.slice((page - 1) * ACTORS_PER_PAGE, page * ACTORS_PER_PAGE);
-  const rangeStart = actors.length === 0 ? 0 : (page - 1) * ACTORS_PER_PAGE + 1;
-  const rangeEnd = Math.min(page * ACTORS_PER_PAGE, actors.length);
+  const trimmedQuery = query.trim();
+  const visibleActors =
+    searchMode === 'id' && trimmedQuery
+      ? actors.filter((actor) => String(actor.id).includes(trimmedQuery))
+      : actors;
+  const totalPages = Math.max(1, Math.ceil(visibleActors.length / perPage));
+  const safePage = Math.min(page, totalPages);
+  const pageActors = visibleActors.slice((safePage - 1) * perPage, safePage * perPage);
+  const rangeStart = visibleActors.length === 0 ? 0 : (safePage - 1) * perPage + 1;
+  const rangeEnd = Math.min(safePage * perPage, visibleActors.length);
 
   return (
     <Stack gap="md">
@@ -110,7 +122,7 @@ export default function Actors() {
                     Directory
                   </Title>
                   <Text size="xs" c="dimmed">
-                    {actors.length} loaded, 25 per page
+                    {visibleActors.length} shown, {actors.length} loaded
                   </Text>
                 </div>
                 <Tooltip label="Refresh actors">
@@ -125,17 +137,42 @@ export default function Actors() {
                   </ActionIcon>
                 </Tooltip>
               </Group>
-              <TextInput
-                aria-label="Search actor"
-                placeholder="Search actor name"
-                value={query}
-                onChange={(event) => setQuery(event.currentTarget.value)}
-                leftSection={<IconSearch size={16} />}
-              />
-              <Group justify="end">
-                <Button type="submit" loading={loadingActors}>
-                  Search
-                </Button>
+              <Group className="actor-search-row" gap="xs" wrap="nowrap">
+                <Select
+                  aria-label="Search mode"
+                  value={searchMode}
+                  onChange={(value) => {
+                    setSearchMode((value as SearchMode | null) ?? 'name');
+                    setPage(1);
+                  }}
+                  data={[
+                    { value: 'name', label: 'Name' },
+                    { value: 'id', label: 'ID' },
+                  ]}
+                  allowDeselect={false}
+                  className="actor-search-mode"
+                />
+                <TextInput
+                  aria-label="Search actor"
+                  placeholder={searchMode === 'id' ? 'Actor ID' : 'Actor name'}
+                  value={query}
+                  onChange={(event) => {
+                    setQuery(event.currentTarget.value);
+                    if (searchMode === 'id') setPage(1);
+                  }}
+                  className="actor-search-input"
+                />
+                <Tooltip label="Search">
+                  <ActionIcon
+                    type="submit"
+                    variant="filled"
+                    size={36}
+                    aria-label="Search actors"
+                    loading={loadingActors}
+                  >
+                    <IconSearch size={16} />
+                  </ActionIcon>
+                </Tooltip>
               </Group>
             </Stack>
           </form>
@@ -163,7 +200,7 @@ export default function Actors() {
                           {actor.name}
                         </Text>
                         <Text size="xs" c="dimmed">
-                          {actor.record_count} records
+                          ID {actor.id} · {actor.record_count} records
                         </Text>
                       </span>
                       <Badge variant="light" color={actor.undownloaded_count > 0 ? 'yellow' : 'teal'} size="sm">
@@ -177,19 +214,38 @@ export default function Actors() {
           </div>
 
           {actors.length > 0 && !actorError && (
-            <Group className="actor-directory-footer" justify="space-between" align="center" wrap="nowrap">
-              <Text size="xs" c="dimmed">
-                {rangeStart}-{rangeEnd} of {actors.length}
-              </Text>
+            <Stack className="actor-directory-footer" gap="xs">
+              <Group justify="space-between" align="center" wrap="nowrap">
+                <Text size="xs" c="dimmed">
+                  {rangeStart}-{rangeEnd} of {visibleActors.length}
+                </Text>
+                <Select
+                  aria-label="Actors per page"
+                  value={String(perPage)}
+                  onChange={(value) => {
+                    setPerPage(Number(value) || DEFAULT_ACTORS_PER_PAGE);
+                    setPage(1);
+                  }}
+                  data={[
+                    { value: '10', label: '10 / page' },
+                    { value: '25', label: '25 / page' },
+                    { value: '50', label: '50 / page' },
+                    { value: '100', label: '100 / page' },
+                  ]}
+                  allowDeselect={false}
+                  size="xs"
+                  className="actor-page-size"
+                />
+              </Group>
               <Pagination
                 total={totalPages}
-                value={page}
+                value={safePage}
                 onChange={setPage}
                 size="xs"
                 siblings={0}
                 boundaries={1}
               />
-            </Group>
+            </Stack>
           )}
         </Stack>
 
@@ -219,17 +275,17 @@ export default function Actors() {
                     </Badge>
                   </Group>
                 </div>
-                <Button
+                <ActionIcon
                   variant="subtle"
-                  leftSection={<IconArrowLeft size={16} />}
+                  aria-label="Clear actor selection"
                   onClick={() => {
                     setSelectedActor(null);
                     setRecords([]);
                     setSelectedRecordId(null);
                   }}
                 >
-                  Clear
-                </Button>
+                  <IconArrowLeft size={18} />
+                </ActionIcon>
               </Group>
 
               <Stack p="md" className="section" gap="md">

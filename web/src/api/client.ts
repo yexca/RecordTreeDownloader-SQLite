@@ -44,6 +44,7 @@ export const api = {
   doctor: () => request<DoctorResult>('/api/doctor'),
   actors: (query: string, limit: number) =>
     request<ActorSummary[]>(`/api/actors${params({ query, limit })}`),
+  actor: (actorId: number) => request<ActorSummary>(`/api/actors/${actorId}`),
   actorRecords: (actorId: number, limit: number) =>
     request<RecordSummary[]>(`/api/actors/${actorId}/records${params({ limit })}`),
   searchTitle: (query: string, limit: number) =>

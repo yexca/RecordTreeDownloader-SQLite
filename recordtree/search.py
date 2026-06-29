@@ -72,6 +72,48 @@ class SearchService:
             for row in rows
         ]
 
+    def get_actor(self, actor_id: int) -> ActorSummary:
+        if actor_id < 1:
+            raise ValidationError("Actor id must be at least 1.")
+        row = self.conn.execute(
+            """
+            SELECT
+                a.id,
+                a.name,
+                COUNT(DISTINCT rg.id) AS record_count,
+                COUNT(DISTINCT CASE
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM download_links dl
+                        WHERE dl.record_group_id = rg.id
+                          AND dl.is_deleted = 0
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM download_items di
+                              WHERE di.link_id = dl.id
+                                AND di.status IN ('completed', 'legacy_completed')
+                          )
+                    )
+                    THEN rg.id
+                END) AS undownloaded_count
+            FROM actors a
+            JOIN record_group_actors rga ON rga.actor_id = a.id
+            JOIN record_groups rg ON rg.id = rga.record_group_id
+            WHERE rg.is_deleted = 0
+              AND a.id = ?
+            GROUP BY a.id, a.name
+            """,
+            (actor_id,),
+        ).fetchone()
+        if row is None:
+            raise NotFoundError(f"Actor not found: {actor_id}")
+        return ActorSummary(
+            id=int(row["id"]),
+            name=row["name"],
+            record_count=int(row["record_count"]),
+            undownloaded_count=int(row["undownloaded_count"]),
+        )
+
     def list_actor_records(self, actor_id: int, limit: int = DEFAULT_LIMIT) -> list[RecordSummary]:
         self._require_actor(actor_id)
         return self._list_records(

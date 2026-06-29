@@ -115,6 +115,11 @@ def actors(query: str = "", limit: int = 50) -> list[dict[str, object]]:
     return _serialize(RecordTreeApp().search_actor(query, limit))
 
 
+@app.get("/api/actors/{actor_id}")
+def actor(actor_id: int) -> dict[str, object]:
+    return _serialize(RecordTreeApp().get_actor(actor_id))
+
+
 @app.get("/api/actors/{actor_id}/records")
 def actor_records(actor_id: int, limit: int = 50) -> list[dict[str, object]]:
     return _serialize(RecordTreeApp().list_actor_records(actor_id, limit))
