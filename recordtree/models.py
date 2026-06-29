@@ -85,6 +85,14 @@ class ActorSummary:
 
 
 @dataclass(frozen=True)
+class SourceSummary:
+    id: int
+    name: str
+    record_count: int
+    undownloaded_count: int
+
+
+@dataclass(frozen=True)
 class RecordSummary:
     id: int
     source_key: str

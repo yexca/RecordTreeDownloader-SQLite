@@ -14,6 +14,7 @@ from .models import (
     LinkSummary,
     RecordDetail,
     RecordSummary,
+    SourceSummary,
     StatsResult,
 )
 from .normalizers import normalize_date, normalize_search_text
@@ -127,6 +128,108 @@ class SearchService:
               )
             """,
             (actor_id,),
+            limit,
+        )
+
+    def search_platform(self, name: str, limit: int = DEFAULT_LIMIT) -> list[SourceSummary]:
+        normalized_limit = normalize_limit(limit)
+        rows = self.conn.execute(
+            """
+            SELECT
+                s.id,
+                s.name,
+                COUNT(DISTINCT rg.id) AS record_count,
+                COUNT(DISTINCT CASE
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM download_links dl
+                        WHERE dl.record_group_id = rg.id
+                          AND dl.is_deleted = 0
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM download_items di
+                              WHERE di.link_id = dl.id
+                                AND di.status IN ('completed', 'legacy_completed')
+                          )
+                    )
+                    THEN rg.id
+                END) AS undownloaded_count
+            FROM sources s
+            JOIN record_group_sources rgs ON rgs.source_id = s.id
+            JOIN record_groups rg ON rg.id = rgs.record_group_id
+            WHERE rg.is_deleted = 0
+              AND s.name_normalized LIKE ?
+            GROUP BY s.id, s.name
+            ORDER BY s.name COLLATE NOCASE, s.id
+            LIMIT ?
+            """,
+            (f"%{normalize_search_text(name)}%", normalized_limit),
+        ).fetchall()
+        return [
+            SourceSummary(
+                id=int(row["id"]),
+                name=row["name"],
+                record_count=int(row["record_count"]),
+                undownloaded_count=int(row["undownloaded_count"]),
+            )
+            for row in rows
+        ]
+
+    def get_platform(self, source_id: int) -> SourceSummary:
+        if source_id < 1:
+            raise ValidationError("Platform id must be at least 1.")
+        row = self.conn.execute(
+            """
+            SELECT
+                s.id,
+                s.name,
+                COUNT(DISTINCT rg.id) AS record_count,
+                COUNT(DISTINCT CASE
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM download_links dl
+                        WHERE dl.record_group_id = rg.id
+                          AND dl.is_deleted = 0
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM download_items di
+                              WHERE di.link_id = dl.id
+                                AND di.status IN ('completed', 'legacy_completed')
+                          )
+                    )
+                    THEN rg.id
+                END) AS undownloaded_count
+            FROM sources s
+            JOIN record_group_sources rgs ON rgs.source_id = s.id
+            JOIN record_groups rg ON rg.id = rgs.record_group_id
+            WHERE rg.is_deleted = 0
+              AND s.id = ?
+            GROUP BY s.id, s.name
+            """,
+            (source_id,),
+        ).fetchone()
+        if row is None:
+            raise NotFoundError(f"Platform not found: {source_id}")
+        return SourceSummary(
+            id=int(row["id"]),
+            name=row["name"],
+            record_count=int(row["record_count"]),
+            undownloaded_count=int(row["undownloaded_count"]),
+        )
+
+    def list_platform_records(self, source_id: int, limit: int = DEFAULT_LIMIT) -> list[RecordSummary]:
+        self._require_source(source_id)
+        return self._list_records(
+            """
+            WHERE rg.is_deleted = 0
+              AND EXISTS (
+                  SELECT 1
+                  FROM record_group_sources rgs
+                  WHERE rgs.record_group_id = rg.id
+                    AND rgs.source_id = ?
+              )
+            """,
+            (source_id,),
             limit,
         )
 
@@ -525,6 +628,13 @@ class SearchService:
         row = self.conn.execute("SELECT 1 FROM actors WHERE id = ?", (actor_id,)).fetchone()
         if row is None:
             raise NotFoundError(f"Actor not found: {actor_id}")
+
+    def _require_source(self, source_id: int) -> None:
+        if source_id < 1:
+            raise ValidationError("Platform id must be at least 1.")
+        row = self.conn.execute("SELECT 1 FROM sources WHERE id = ?", (source_id,)).fetchone()
+        if row is None:
+            raise NotFoundError(f"Platform not found: {source_id}")
 
 
 def normalize_limit(limit: int) -> int:

@@ -114,6 +114,13 @@ export interface ActorSummary {
   undownloaded_count: number;
 }
 
+export interface PlatformSummary {
+  id: number;
+  name: string;
+  record_count: number;
+  undownloaded_count: number;
+}
+
 export interface RecordSummary {
   id: number;
   source_key: string;

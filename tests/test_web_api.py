@@ -132,6 +132,16 @@ async def test_search_detail_stats_and_download_plan_endpoints(
         actor_records = (await client.get(f"/api/actors/{actors[0]['id']}/records")).json()
         assert actor_records[0]["id"] == group_id
 
+        platforms = (await client.get("/api/platforms", params={"query": "nico"})).json()
+        assert platforms[0]["name"] == "niconico"
+        assert platforms[0]["record_count"] == 1
+
+        platform_detail = (await client.get(f"/api/platforms/{platforms[0]['id']}")).json()
+        assert platform_detail == platforms[0]
+
+        platform_records = (await client.get(f"/api/platforms/{platforms[0]['id']}/records")).json()
+        assert platform_records[0]["id"] == group_id
+
         assert (await client.get("/api/records/search/title", params={"query": "asmr"})).json()[0]["id"] == group_id
         assert (await client.get("/api/records/search/source", params={"query": "nico"})).json()[0]["id"] == group_id
         assert (

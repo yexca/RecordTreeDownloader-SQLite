@@ -5,6 +5,7 @@ import type {
   DownloadPlan,
   Job,
   JobCreateResponse,
+  PlatformSummary,
   RecordDetail,
   RecordSummary,
   StatsResult,
@@ -47,6 +48,11 @@ export const api = {
   actor: (actorId: number) => request<ActorSummary>(`/api/actors/${actorId}`),
   actorRecords: (actorId: number, limit: number) =>
     request<RecordSummary[]>(`/api/actors/${actorId}/records${params({ limit })}`),
+  platforms: (query: string, limit: number) =>
+    request<PlatformSummary[]>(`/api/platforms${params({ query, limit })}`),
+  platform: (sourceId: number) => request<PlatformSummary>(`/api/platforms/${sourceId}`),
+  platformRecords: (sourceId: number, limit: number) =>
+    request<RecordSummary[]>(`/api/platforms/${sourceId}/records${params({ limit })}`),
   searchTitle: (query: string, limit: number) =>
     request<RecordSummary[]>(`/api/records/search/title${params({ query, limit })}`),
   searchSource: (query: string, limit: number) =>

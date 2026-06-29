@@ -28,6 +28,7 @@ from .models import (
     MegaCommandResult,
     RecordDetail,
     RecordSummary,
+    SourceSummary,
     StatsResult,
 )
 from .normalizers import build_source_key, clean_text, normalize_file_type
@@ -246,6 +247,27 @@ class RecordTreeApp:
         conn = self._open_app_db()
         try:
             return SearchService(conn).list_actor_records(actor_id, limit)
+        finally:
+            conn.close()
+
+    def search_platform(self, name: str, limit: int = 50) -> list[SourceSummary]:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).search_platform(name, limit)
+        finally:
+            conn.close()
+
+    def get_platform(self, source_id: int) -> SourceSummary:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).get_platform(source_id)
+        finally:
+            conn.close()
+
+    def list_platform_records(self, source_id: int, limit: int = 50) -> list[RecordSummary]:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).list_platform_records(source_id, limit)
         finally:
             conn.close()
 
