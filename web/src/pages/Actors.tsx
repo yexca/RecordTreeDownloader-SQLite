@@ -24,6 +24,7 @@ import RecordDetail from './RecordDetail';
 const ACTOR_FETCH_LIMIT = 500;
 const DEFAULT_ACTORS_PER_PAGE = 25;
 const RECORD_FETCH_LIMIT = 500;
+const DEFAULT_RECORDS_PER_PAGE = 25;
 type SearchMode = 'name' | 'id';
 
 export default function Actors() {
@@ -31,6 +32,8 @@ export default function Actors() {
   const [searchMode, setSearchMode] = useState<SearchMode>('name');
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(DEFAULT_ACTORS_PER_PAGE);
+  const [recordPage, setRecordPage] = useState(1);
+  const [recordsPerPage, setRecordsPerPage] = useState(DEFAULT_RECORDS_PER_PAGE);
   const [actors, setActors] = useState<ActorSummary[]>([]);
   const [selectedActor, setSelectedActor] = useState<ActorSummary | null>(null);
   const [records, setRecords] = useState<RecordSummary[]>([]);
@@ -67,6 +70,7 @@ export default function Actors() {
   const loadActorRecords = async (actor: ActorSummary) => {
     setSelectedActor(actor);
     setSelectedRecordId(null);
+    setRecordPage(1);
     setLoadingRecords(true);
     setRecordError(null);
     try {
@@ -100,6 +104,14 @@ export default function Actors() {
   const pageActors = visibleActors.slice((safePage - 1) * perPage, safePage * perPage);
   const rangeStart = visibleActors.length === 0 ? 0 : (safePage - 1) * perPage + 1;
   const rangeEnd = Math.min(safePage * perPage, visibleActors.length);
+  const totalRecordPages = Math.max(1, Math.ceil(records.length / recordsPerPage));
+  const safeRecordPage = Math.min(recordPage, totalRecordPages);
+  const pageRecords = records.slice(
+    (safeRecordPage - 1) * recordsPerPage,
+    safeRecordPage * recordsPerPage,
+  );
+  const recordRangeStart = records.length === 0 ? 0 : (safeRecordPage - 1) * recordsPerPage + 1;
+  const recordRangeEnd = Math.min(safeRecordPage * recordsPerPage, records.length);
 
   return (
     <Stack gap="md">
@@ -294,9 +306,28 @@ export default function Actors() {
                     <Title order={3} size="h4">
                       Records
                     </Title>
-                    <Text size="xs" c="dimmed">
-                      Sorted by delivery date
-                    </Text>
+                    <Group gap="xs" wrap="nowrap">
+                      <Text size="xs" c="dimmed">
+                        Sorted by delivery date
+                      </Text>
+                      <Select
+                        aria-label="Records per page"
+                        value={String(recordsPerPage)}
+                        onChange={(value) => {
+                          setRecordsPerPage(Number(value) || DEFAULT_RECORDS_PER_PAGE);
+                          setRecordPage(1);
+                        }}
+                        data={[
+                          { value: '10', label: '10 / page' },
+                          { value: '25', label: '25 / page' },
+                          { value: '50', label: '50 / page' },
+                          { value: '100', label: '100 / page' },
+                        ]}
+                        allowDeselect={false}
+                        size="xs"
+                        className="actor-page-size"
+                      />
+                    </Group>
                   </Group>
                   {recordError ? (
                     <ErrorBlock message={recordError} />
@@ -305,7 +336,22 @@ export default function Actors() {
                   ) : records.length === 0 ? (
                     <EmptyState message="No records found for this actor." />
                   ) : (
-                    <RecordTable records={records} onOpen={setSelectedRecordId} />
+                    <>
+                      <RecordTable records={pageRecords} onOpen={setSelectedRecordId} variant="compact" />
+                      <Group justify="space-between" align="center" wrap="nowrap">
+                        <Text size="xs" c="dimmed">
+                          {recordRangeStart}-{recordRangeEnd} of {records.length}
+                        </Text>
+                        <Pagination
+                          total={totalRecordPages}
+                          value={safeRecordPage}
+                          onChange={setRecordPage}
+                          size="sm"
+                          siblings={1}
+                          boundaries={1}
+                        />
+                      </Group>
+                    </>
                   )}
                 </Stack>
               )}

@@ -7,25 +7,28 @@ import { formatBytes, formatText } from './format';
 export function RecordTable({
   records,
   onOpen,
+  variant = 'default',
 }: {
   records: RecordSummary[];
   onOpen: (recordId: number) => void;
+  variant?: 'default' | 'compact';
 }) {
+  const compact = variant === 'compact';
   return (
     <div className="table-scroll">
       <Table striped highlightOnHover withTableBorder verticalSpacing={6} fz="sm">
         <Table.Thead>
-          <Table.Tr>
-            <Table.Th className="nowrap">ID</Table.Th>
-            <Table.Th>Title</Table.Th>
-            <Table.Th>Actor</Table.Th>
-            <Table.Th>Source</Table.Th>
-            <Table.Th className="nowrap">Delivery</Table.Th>
-            <Table.Th className="nowrap">Links</Table.Th>
-            <Table.Th className="nowrap">Size</Table.Th>
-            <Table.Th className="nowrap">Status</Table.Th>
-            <Table.Th className="nowrap" />
-          </Table.Tr>
+            <Table.Tr>
+              <Table.Th className="nowrap">ID</Table.Th>
+              <Table.Th>Title</Table.Th>
+              {!compact && <Table.Th>Actor</Table.Th>}
+              <Table.Th>Source</Table.Th>
+              <Table.Th className="nowrap">Delivery</Table.Th>
+              {!compact && <Table.Th className="nowrap">Links</Table.Th>}
+              <Table.Th className="nowrap">Size</Table.Th>
+              {!compact && <Table.Th className="nowrap">Status</Table.Th>}
+              <Table.Th className="nowrap" />
+            </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
           {records.map((record) => (
@@ -36,16 +39,20 @@ export function RecordTable({
                   {record.title}
                 </Text>
               </Table.Td>
-              <Table.Td className="truncate-cell">{formatText(record.actor)}</Table.Td>
+              {!compact && <Table.Td className="truncate-cell">{formatText(record.actor)}</Table.Td>}
               <Table.Td className="truncate-cell">{formatText(record.source)}</Table.Td>
               <Table.Td className="nowrap">{formatText(record.delivery_date)}</Table.Td>
-              <Table.Td className="nowrap">
-                {record.completed_links}/{record.active_links}
-              </Table.Td>
+              {!compact && (
+                <Table.Td className="nowrap">
+                  {record.completed_links}/{record.active_links}
+                </Table.Td>
+              )}
               <Table.Td className="nowrap">{formatBytes(record.size_bytes)}</Table.Td>
-              <Table.Td className="nowrap">
-                <DownloadedBadge value={record.downloaded} />
-              </Table.Td>
+              {!compact && (
+                <Table.Td className="nowrap">
+                  <DownloadedBadge value={record.downloaded} />
+                </Table.Td>
+              )}
               <Table.Td className="nowrap">
                 <Group justify="flex-end">
                   <Tooltip label="Open record">
