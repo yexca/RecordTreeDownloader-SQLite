@@ -11,26 +11,50 @@ import {
 import { useDisclosure, useHash } from '@mantine/hooks';
 import {
   IconDatabase,
+  IconDownload,
+  IconFileDatabase,
   IconFileImport,
+  IconMicrophone2,
   IconLayoutDashboard,
   IconMoon,
+  IconPlayerPlay,
   IconSearch,
   IconSettings,
   IconSun,
 } from '@tabler/icons-react';
+import Actors from './pages/Actors';
 import Dashboard from './pages/Dashboard';
+import Downloads from './pages/Downloads';
 import ImportPage from './pages/Import';
+import Platform from './pages/Platform';
 import RecordDetail from './pages/RecordDetail';
+import Records from './pages/Records';
 import Search from './pages/Search';
+import Settings from './pages/Settings';
 import SystemStatus from './pages/SystemStatus';
 
-type Route = 'dashboard' | 'search' | 'import' | 'status' | 'record';
+type Route =
+  | 'dashboard'
+  | 'search'
+  | 'actors'
+  | 'platform'
+  | 'records'
+  | 'import'
+  | 'downloads'
+  | 'settings'
+  | 'status'
+  | 'record';
 
 function parseHash(hash: string): { route: Route; recordId?: string } {
   const normalized = hash.replace(/^#\/?/, '');
   const [route, recordId] = normalized.split('/');
   if (route === 'search') return { route: 'search' };
+  if (route === 'actors') return { route: 'actors' };
+  if (route === 'platform') return { route: 'platform' };
+  if (route === 'records' && !recordId) return { route: 'records' };
   if (route === 'import') return { route: 'import' };
+  if (route === 'downloads') return { route: 'downloads' };
+  if (route === 'settings') return { route: 'settings' };
   if (route === 'status') return { route: 'status' };
   if (route === 'records' && recordId) return { route: 'record', recordId };
   return { route: 'dashboard' };
@@ -50,8 +74,18 @@ export default function App() {
   const page =
     route === 'search' ? (
       <Search onOpenRecord={(id) => navigate(`/records/${id}`)} />
+    ) : route === 'actors' ? (
+      <Actors />
+    ) : route === 'platform' ? (
+      <Platform />
+    ) : route === 'records' ? (
+      <Records />
     ) : route === 'import' ? (
       <ImportPage />
+    ) : route === 'downloads' ? (
+      <Downloads />
+    ) : route === 'settings' ? (
+      <Settings />
     ) : route === 'status' ? (
       <SystemStatus />
     ) : route === 'record' && recordId ? (
@@ -98,10 +132,40 @@ export default function App() {
           onClick={() => navigate('/search')}
         />
         <NavLink
+          label="Actors"
+          leftSection={<IconMicrophone2 size={18} />}
+          active={route === 'actors'}
+          onClick={() => navigate('/actors')}
+        />
+        <NavLink
+          label="Platform"
+          leftSection={<IconPlayerPlay size={18} />}
+          active={route === 'platform'}
+          onClick={() => navigate('/platform')}
+        />
+        <NavLink
+          label="Records"
+          leftSection={<IconFileDatabase size={18} />}
+          active={route === 'records'}
+          onClick={() => navigate('/records')}
+        />
+        <NavLink
           label="Import"
           leftSection={<IconFileImport size={18} />}
           active={route === 'import'}
           onClick={() => navigate('/import')}
+        />
+        <NavLink
+          label="Downloads"
+          leftSection={<IconDownload size={18} />}
+          active={route === 'downloads'}
+          onClick={() => navigate('/downloads')}
+        />
+        <NavLink
+          label="Settings"
+          leftSection={<IconSettings size={18} />}
+          active={route === 'settings'}
+          onClick={() => navigate('/settings')}
         />
         <NavLink
           label="System Status"
