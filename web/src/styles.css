@@ -117,6 +117,10 @@ body {
   width: 104px;
 }
 
+.records-page-size {
+  width: 124px;
+}
+
 .actor-list-item {
   display: flex;
   width: 100%;

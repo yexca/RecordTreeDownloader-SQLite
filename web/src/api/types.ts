@@ -135,6 +135,14 @@ export interface RecordSummary {
   downloaded: DownloadedStatus;
 }
 
+export interface RecordPage {
+  items: RecordSummary[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
 export interface LinkSummary {
   id: number;
   link_order: number;

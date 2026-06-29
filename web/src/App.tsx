@@ -43,20 +43,22 @@ type Route =
   | 'downloads'
   | 'settings'
   | 'status'
+  | 'search-record'
   | 'record';
 
 function parseHash(hash: string): { route: Route; recordId?: string } {
   const normalized = hash.replace(/^#\/?/, '');
-  const [route, recordId] = normalized.split('/');
+  const [route, section, recordId] = normalized.split('/');
+  if (route === 'search' && section === 'records' && recordId) return { route: 'search-record', recordId };
   if (route === 'search') return { route: 'search' };
   if (route === 'actors') return { route: 'actors' };
   if (route === 'platform') return { route: 'platform' };
-  if (route === 'records' && !recordId) return { route: 'records' };
+  if (route === 'records' && !section) return { route: 'records' };
   if (route === 'import') return { route: 'import' };
   if (route === 'downloads') return { route: 'downloads' };
   if (route === 'settings') return { route: 'settings' };
   if (route === 'status') return { route: 'status' };
-  if (route === 'records' && recordId) return { route: 'record', recordId };
+  if (route === 'records' && section) return { route: 'record', recordId: section };
   return { route: 'dashboard' };
 }
 
@@ -73,13 +75,13 @@ export default function App() {
 
   const page =
     route === 'search' ? (
-      <Search onOpenRecord={(id) => navigate(`/records/${id}`)} />
+      <Search onOpenRecord={(id) => navigate(`/search/records/${id}`)} />
     ) : route === 'actors' ? (
       <Actors />
     ) : route === 'platform' ? (
       <Platform />
     ) : route === 'records' ? (
-      <Records />
+      <Records onOpenRecord={(id) => navigate(`/records/${id}`)} />
     ) : route === 'import' ? (
       <ImportPage />
     ) : route === 'downloads' ? (
@@ -89,6 +91,8 @@ export default function App() {
     ) : route === 'status' ? (
       <SystemStatus />
     ) : route === 'record' && recordId ? (
+      <RecordDetail idOrKey={recordId} onBack={() => navigate('/records')} />
+    ) : route === 'search-record' && recordId ? (
       <RecordDetail idOrKey={recordId} onBack={() => navigate('/search')} />
     ) : (
       <Dashboard onOpenRecord={(id) => navigate(`/records/${id}`)} />
@@ -128,7 +132,7 @@ export default function App() {
         <NavLink
           label="Search"
           leftSection={<IconSearch size={18} />}
-          active={route === 'search' || route === 'record'}
+          active={route === 'search' || route === 'search-record'}
           onClick={() => navigate('/search')}
         />
         <NavLink
@@ -146,7 +150,7 @@ export default function App() {
         <NavLink
           label="Records"
           leftSection={<IconFileDatabase size={18} />}
-          active={route === 'records'}
+          active={route === 'records' || route === 'record'}
           onClick={() => navigate('/records')}
         />
         <NavLink

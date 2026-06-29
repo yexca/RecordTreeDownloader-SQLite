@@ -152,6 +152,29 @@ async def test_search_detail_stats_and_download_plan_endpoints(
         ).json()[0]["id"] == group_id
         assert (await client.get("/api/records/undownloaded")).json()[0]["id"] == group_id
 
+        record_page = (
+            await client.get(
+                "/api/records",
+                params={
+                    "title": "asmr",
+                    "actor": "api",
+                    "source": "nico",
+                    "date_from": "2026-01-01",
+                    "date_to": "2026-01-31",
+                    "downloaded": "partial",
+                    "file_type": "m4a",
+                    "only_undownloaded": True,
+                    "page": 1,
+                    "page_size": 25,
+                },
+            )
+        ).json()
+        assert record_page["total"] == 1
+        assert record_page["total_pages"] == 1
+        assert record_page["page"] == 1
+        assert record_page["page_size"] == 25
+        assert record_page["items"][0]["id"] == group_id
+
         detail = (await client.get(f"/api/records/{group_id}")).json()
         assert detail["downloaded"] == "partial"
         assert len(detail["links"]) == 3
@@ -189,6 +212,10 @@ async def test_api_maps_project_errors_to_http_responses(
         bad_date = await client.get("/api/records/search/date")
         assert bad_date.status_code == 400
         assert bad_date.json()["error"] == "ValidationError"
+
+        bad_page = await client.get("/api/records", params={"page": 0})
+        assert bad_page.status_code == 400
+        assert bad_page.json()["error"] == "ValidationError"
 
 
 async def test_import_upload_creates_background_job_and_reports_result(

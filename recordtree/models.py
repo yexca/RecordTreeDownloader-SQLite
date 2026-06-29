@@ -108,6 +108,15 @@ class RecordSummary:
 
 
 @dataclass(frozen=True)
+class RecordPage:
+    items: list[RecordSummary]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+@dataclass(frozen=True)
 class LinkSummary:
     id: int
     link_order: int

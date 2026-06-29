@@ -7,6 +7,7 @@ import type {
   JobCreateResponse,
   PlatformSummary,
   RecordDetail,
+  RecordPage,
   RecordSummary,
   StatsResult,
 } from './types';
@@ -53,6 +54,18 @@ export const api = {
   platform: (sourceId: number) => request<PlatformSummary>(`/api/platforms/${sourceId}`),
   platformRecords: (sourceId: number, limit: number) =>
     request<RecordSummary[]>(`/api/platforms/${sourceId}/records${params({ limit })}`),
+  records: (query: {
+    title?: string;
+    actor?: string;
+    source?: string;
+    date_from?: string;
+    date_to?: string;
+    downloaded?: string;
+    file_type?: string;
+    only_undownloaded?: boolean;
+    page: number;
+    page_size: number;
+  }) => request<RecordPage>(`/api/records${params(query)}`),
   searchTitle: (query: string, limit: number) =>
     request<RecordSummary[]>(`/api/records/search/title${params({ query, limit })}`),
   searchSource: (query: string, limit: number) =>

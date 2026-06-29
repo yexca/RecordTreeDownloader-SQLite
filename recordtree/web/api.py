@@ -140,6 +140,35 @@ def platform_records(source_id: int, limit: int = 50) -> list[dict[str, object]]
     return _serialize(RecordTreeApp().list_platform_records(source_id, limit))
 
 
+@app.get("/api/records")
+def records(
+    title: str = "",
+    actor: str = "",
+    source: str = "",
+    date_from: str | None = None,
+    date_to: str | None = None,
+    downloaded: str | None = None,
+    file_type: str | None = None,
+    only_undownloaded: bool = False,
+    page: int = 1,
+    page_size: int = 50,
+) -> dict[str, object]:
+    return _serialize(
+        RecordTreeApp().list_records(
+            title=title,
+            actor=actor,
+            source=source,
+            date_from=date_from,
+            date_to=date_to,
+            downloaded=downloaded,
+            file_type=file_type,
+            only_undownloaded=only_undownloaded,
+            page=page,
+            page_size=page_size,
+        )
+    )
+
+
 @app.get("/api/records/search/title")
 def search_title(query: str = "", limit: int = 50) -> list[dict[str, object]]:
     return _serialize(RecordTreeApp().search_title(query, limit))

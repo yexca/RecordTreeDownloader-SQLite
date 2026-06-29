@@ -26,6 +26,7 @@ from .models import (
     LinkItem,
     InitResult,
     MegaCommandResult,
+    RecordPage,
     RecordDetail,
     RecordSummary,
     SourceSummary,
@@ -268,6 +269,37 @@ class RecordTreeApp:
         conn = self._open_app_db()
         try:
             return SearchService(conn).list_platform_records(source_id, limit)
+        finally:
+            conn.close()
+
+    def list_records(
+        self,
+        *,
+        title: str = "",
+        actor: str = "",
+        source: str = "",
+        date_from: str | None = None,
+        date_to: str | None = None,
+        downloaded: str | None = None,
+        file_type: str | None = None,
+        only_undownloaded: bool = False,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> RecordPage:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).list_records(
+                title=title,
+                actor=actor,
+                source=source,
+                date_from=date_from,
+                date_to=date_to,
+                downloaded=downloaded,
+                file_type=file_type,
+                only_undownloaded=only_undownloaded,
+                page=page,
+                page_size=page_size,
+            )
         finally:
             conn.close()
 

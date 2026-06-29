@@ -12,6 +12,7 @@ from .models import (
     DownloadSummary,
     ImportSummary,
     LinkSummary,
+    RecordPage,
     RecordDetail,
     RecordSummary,
     SourceSummary,
@@ -231,6 +232,44 @@ class SearchService:
             """,
             (source_id,),
             limit,
+        )
+
+    def list_records(
+        self,
+        *,
+        title: str = "",
+        actor: str = "",
+        source: str = "",
+        date_from: str | None = None,
+        date_to: str | None = None,
+        downloaded: str | None = None,
+        file_type: str | None = None,
+        only_undownloaded: bool = False,
+        page: int = 1,
+        page_size: int = DEFAULT_LIMIT,
+    ) -> RecordPage:
+        normalized_page = normalize_page(page)
+        normalized_page_size = normalize_limit(page_size)
+        where_sql, params = self._build_record_filters(
+            title=title,
+            actor=actor,
+            source=source,
+            date_from=date_from,
+            date_to=date_to,
+            downloaded=downloaded,
+            file_type=file_type,
+            only_undownloaded=only_undownloaded,
+        )
+        total = self._count_records(where_sql, params)
+        offset = (normalized_page - 1) * normalized_page_size
+        items = self._list_records_page(where_sql, params, normalized_page_size, offset)
+        total_pages = (total + normalized_page_size - 1) // normalized_page_size if total else 0
+        return RecordPage(
+            items=items,
+            page=normalized_page,
+            page_size=normalized_page_size,
+            total=total,
+            total_pages=total_pages,
         )
 
     def search_title(self, keyword: str, limit: int = DEFAULT_LIMIT) -> list[RecordSummary]:
@@ -597,6 +636,141 @@ class SearchService:
         ).fetchall()
         return [_summary_from_row(row) for row in rows]
 
+    def _list_records_page(
+        self,
+        where_sql: str,
+        params: tuple[object, ...],
+        limit: int,
+        offset: int,
+    ) -> list[RecordSummary]:
+        rows = self.conn.execute(
+            f"""
+            SELECT rg.*,
+                   (
+                       SELECT COUNT(*)
+                       FROM download_links dl
+                       WHERE dl.record_group_id = rg.id AND dl.is_deleted = 0
+                   ) AS active_count,
+                   (
+                       SELECT COUNT(DISTINCT dl.id)
+                       FROM download_links dl
+                       JOIN download_items di ON di.link_id = dl.id
+                       WHERE dl.record_group_id = rg.id
+                         AND dl.is_deleted = 0
+                         AND di.status IN ('completed', 'legacy_completed')
+                   ) AS completed_count
+            FROM record_groups rg
+            {where_sql}
+            ORDER BY rg.delivery_date DESC, rg.entry_date DESC, rg.id DESC
+            LIMIT ? OFFSET ?
+            """,
+            params + (limit, offset),
+        ).fetchall()
+        return [_summary_from_row(row) for row in rows]
+
+    def _count_records(self, where_sql: str, params: tuple[object, ...]) -> int:
+        row = self.conn.execute(
+            f"""
+            SELECT COUNT(*)
+            FROM record_groups rg
+            {where_sql}
+            """,
+            params,
+        ).fetchone()
+        return int(row[0])
+
+    def _build_record_filters(
+        self,
+        *,
+        title: str,
+        actor: str,
+        source: str,
+        date_from: str | None,
+        date_to: str | None,
+        downloaded: str | None,
+        file_type: str | None,
+        only_undownloaded: bool,
+    ) -> tuple[str, tuple[object, ...]]:
+        normalized_from = normalize_date(date_from) if date_from else None
+        normalized_to = normalize_date(date_to) if date_to else None
+        normalized_downloaded = downloaded.casefold() if downloaded else None
+        if normalized_downloaded is not None and normalized_downloaded not in {"all", "partial", "none", "unknown"}:
+            raise ValidationError("Downloaded must be one of: all, partial, none, unknown.")
+
+        normalized_file_type = None
+        if file_type is not None and file_type.strip():
+            stripped = file_type.strip().casefold()
+            normalized_file_type = stripped if stripped.startswith(".") else f".{stripped}"
+
+        clauses = ["rg.is_deleted = 0"]
+        params: list[object] = []
+
+        if title:
+            text = f"%{normalize_search_text(title)}%"
+            clauses.append(
+                """
+                (
+                    lower(rg.title) LIKE ?
+                    OR lower(rg.upload_title) LIKE ?
+                    OR lower(COALESCE(rg.duplicate_search_raw, '')) LIKE ?
+                )
+                """
+            )
+            params.extend([text, text, text])
+        if actor:
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM record_group_actors rga
+                    JOIN actors a ON a.id = rga.actor_id
+                    WHERE rga.record_group_id = rg.id
+                      AND a.name_normalized LIKE ?
+                )
+                """
+            )
+            params.append(f"%{normalize_search_text(actor)}%")
+        if source:
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM record_group_sources rgs
+                    JOIN sources s ON s.id = rgs.source_id
+                    WHERE rgs.record_group_id = rg.id
+                      AND s.name_normalized LIKE ?
+                )
+                """
+            )
+            params.append(f"%{normalize_search_text(source)}%")
+        if normalized_from is not None:
+            clauses.append("rg.delivery_date IS NOT NULL")
+            clauses.append("rg.delivery_date >= ?")
+            params.append(normalized_from)
+        if normalized_to is not None:
+            clauses.append("rg.delivery_date IS NOT NULL")
+            clauses.append("rg.delivery_date <= ?")
+            params.append(normalized_to)
+        if normalized_file_type is not None:
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM download_links dl
+                    WHERE dl.record_group_id = rg.id
+                      AND dl.is_deleted = 0
+                      AND dl.file_type = ?
+                )
+                """
+            )
+            params.append(normalized_file_type)
+        if only_undownloaded:
+            clauses.append(_undownloaded_exists_sql())
+        if normalized_downloaded is not None:
+            clauses.append(_downloaded_filter_sql(normalized_downloaded))
+
+        return "WHERE " + " AND ".join(clauses), tuple(params)
+
     def _status_counts(self, group_id: int) -> dict[str, int]:
         row = self.conn.execute(
             """
@@ -641,6 +815,12 @@ def normalize_limit(limit: int) -> int:
     if limit < 1:
         raise ValidationError("Limit must be at least 1.")
     return min(limit, MAX_LIMIT)
+
+
+def normalize_page(page: int) -> int:
+    if page < 1:
+        raise ValidationError("Page must be at least 1.")
+    return page
 
 
 def parse_type_filter(value: str | None) -> set[str] | None:
@@ -695,3 +875,55 @@ def _downloaded_label(active_count: int, completed_count: int) -> str:
     if completed_count < active_count:
         return "partial"
     return "all"
+
+
+def _active_count_sql() -> str:
+    return """
+    (
+        SELECT COUNT(*)
+        FROM download_links dl
+        WHERE dl.record_group_id = rg.id AND dl.is_deleted = 0
+    )
+    """
+
+
+def _completed_count_sql() -> str:
+    return """
+    (
+        SELECT COUNT(DISTINCT dl.id)
+        FROM download_links dl
+        JOIN download_items di ON di.link_id = dl.id
+        WHERE dl.record_group_id = rg.id
+          AND dl.is_deleted = 0
+          AND di.status IN ('completed', 'legacy_completed')
+    )
+    """
+
+
+def _undownloaded_exists_sql() -> str:
+    return """
+    EXISTS (
+        SELECT 1
+        FROM download_links dl
+        WHERE dl.record_group_id = rg.id
+          AND dl.is_deleted = 0
+          AND NOT EXISTS (
+              SELECT 1
+              FROM download_items di
+              WHERE di.link_id = dl.id
+                AND di.status IN ('completed', 'legacy_completed')
+          )
+    )
+    """
+
+
+def _downloaded_filter_sql(downloaded: str) -> str:
+    active_count = _active_count_sql()
+    completed_count = _completed_count_sql()
+    if downloaded == "unknown":
+        return f"{active_count} = 0"
+    if downloaded == "none":
+        return f"{active_count} > 0 AND {completed_count} = 0"
+    if downloaded == "partial":
+        return f"{completed_count} > 0 AND {completed_count} < {active_count}"
+    return f"{active_count} > 0 AND {completed_count} = {active_count}"
