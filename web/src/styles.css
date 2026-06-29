@@ -118,7 +118,44 @@ body {
 }
 
 .records-page-size {
-  width: 124px;
+  width: 92px;
+}
+
+.records-toolbar {
+  display: grid;
+  grid-template-columns:
+    82px
+    minmax(220px, 1.6fr)
+    minmax(140px, 0.85fr)
+    minmax(140px, 0.85fr)
+    minmax(220px, 1fr)
+    156px
+    42px
+    42px;
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+}
+
+.records-toolbar > * {
+  min-width: 0;
+}
+
+.records-date-filter {
+  min-width: 0;
+}
+
+.records-date-filter .mantine-DateInput-root {
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.records-date-separator {
+  flex: 0 0 auto;
+}
+
+.records-result-bar {
+  min-width: 0;
 }
 
 .actor-list-item {
@@ -182,5 +219,14 @@ body {
 
   .actor-directory {
     position: static;
+  }
+
+  .records-toolbar {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .records-result-bar {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

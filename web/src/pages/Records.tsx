@@ -1,6 +1,5 @@
 import {
-  Button,
-  Checkbox,
+  ActionIcon,
   Group,
   NumberInput,
   Pagination,
@@ -9,7 +8,9 @@ import {
   Text,
   TextInput,
   Title,
+  Tooltip,
 } from '@mantine/core';
+import { DateInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
 import { IconRefresh, IconSearch } from '@tabler/icons-react';
 import { FormEvent, useEffect, useState } from 'react';
@@ -17,6 +18,8 @@ import { api } from '../api/client';
 import type { DownloadedStatus, RecordPage } from '../api/types';
 import { EmptyState } from '../components/EmptyState';
 import { RecordTable } from '../components/RecordTable';
+
+type DownloadFilter = DownloadedStatus | 'pending' | '';
 
 const emptyPage: RecordPage = {
   items: [],
@@ -27,14 +30,13 @@ const emptyPage: RecordPage = {
 };
 
 export default function Records({ onOpenRecord }: { onOpenRecord: (id: number) => void }) {
+  const [recordId, setRecordId] = useState('');
   const [title, setTitle] = useState('');
   const [actor, setActor] = useState('');
   const [source, setSource] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [downloaded, setDownloaded] = useState<DownloadedStatus | ''>('');
-  const [fileType, setFileType] = useState('');
-  const [onlyUndownloaded, setOnlyUndownloaded] = useState(false);
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
+  const [downloadFilter, setDownloadFilter] = useState<DownloadFilter>('');
   const [pageSize, setPageSize] = useState(50);
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<RecordPage>(emptyPage);
@@ -44,16 +46,27 @@ export default function Records({ onOpenRecord }: { onOpenRecord: (id: number) =
   const loadRecords = async (nextPage = page) => {
     setLoading(true);
     setSearched(true);
+    const parsedRecordId = Number(recordId);
+    const hasRecordId = recordId.trim() !== '' && Number.isInteger(parsedRecordId);
+    if (recordId.trim() !== '' && !hasRecordId) {
+      notifications.show({
+        color: 'red',
+        title: 'Invalid record ID',
+        message: 'Record ID must be a whole number.',
+      });
+      setLoading(false);
+      return;
+    }
     try {
       const payload = await api.records({
+        record_id: hasRecordId ? parsedRecordId : undefined,
         title,
         actor,
         source,
-        date_from: dateFrom,
-        date_to: dateTo,
-        downloaded,
-        file_type: fileType,
-        only_undownloaded: onlyUndownloaded,
+        date_from: dateFrom ?? '',
+        date_to: dateTo ?? '',
+        downloaded: downloadFilter === 'pending' ? '' : downloadFilter,
+        only_undownloaded: downloadFilter === 'pending',
         page: nextPage,
         page_size: pageSize,
       });
@@ -77,14 +90,13 @@ export default function Records({ onOpenRecord }: { onOpenRecord: (id: number) =
   };
 
   const resetFilters = () => {
+    setRecordId('');
     setTitle('');
     setActor('');
     setSource('');
-    setDateFrom('');
-    setDateTo('');
-    setDownloaded('');
-    setFileType('');
-    setOnlyUndownloaded(false);
+    setDateFrom(null);
+    setDateTo(null);
+    setDownloadFilter('');
     setPage(1);
   };
 
@@ -107,47 +119,88 @@ export default function Records({ onOpenRecord }: { onOpenRecord: (id: number) =
       </div>
 
       <form onSubmit={runQuery}>
-        <Stack p="md" className="section" gap="sm">
-          <Group grow align="end">
-            <TextInput label="Title" value={title} onChange={(event) => setTitle(event.currentTarget.value)} />
-            <TextInput label="Actor" value={actor} onChange={(event) => setActor(event.currentTarget.value)} />
-            <TextInput label="Source" value={source} onChange={(event) => setSource(event.currentTarget.value)} />
-          </Group>
-          <Group grow align="end">
-            <TextInput
-              label="From"
-              placeholder="YYYY-MM-DD"
+        <div className="section records-toolbar">
+          <TextInput
+            aria-label="Record ID"
+            placeholder="ID"
+            value={recordId}
+            inputMode="numeric"
+            onChange={(event) => setRecordId(event.currentTarget.value)}
+          />
+          <TextInput
+            aria-label="Title"
+            placeholder="Title"
+            value={title}
+            onChange={(event) => setTitle(event.currentTarget.value)}
+          />
+          <TextInput
+            aria-label="Actor"
+            placeholder="Actor"
+            value={actor}
+            onChange={(event) => setActor(event.currentTarget.value)}
+          />
+          <TextInput
+            aria-label="Source"
+            placeholder="Source"
+            value={source}
+            onChange={(event) => setSource(event.currentTarget.value)}
+          />
+          <Group gap={4} wrap="nowrap" className="records-date-filter">
+            <DateInput
+              aria-label="From delivery date"
+              placeholder="From"
               value={dateFrom}
-              onChange={(event) => setDateFrom(event.currentTarget.value)}
-            />
-            <TextInput
-              label="To"
-              placeholder="YYYY-MM-DD"
-              value={dateTo}
-              onChange={(event) => setDateTo(event.currentTarget.value)}
-            />
-            <Select
-              label="Status"
+              onChange={setDateFrom}
+              valueFormat="YYYY-MM-DD"
               clearable
-              value={downloaded}
-              onChange={(value) => setDownloaded((value as DownloadedStatus | null) ?? '')}
-              data={[
-                { value: 'all', label: 'All downloaded' },
-                { value: 'partial', label: 'Partial' },
-                { value: 'none', label: 'None' },
-                { value: 'unknown', label: 'Unknown' },
-              ]}
+            />
+            <Text size="sm" c="dimmed" className="records-date-separator">
+              to
+            </Text>
+            <DateInput
+              aria-label="To delivery date"
+              placeholder="To"
+              value={dateTo}
+              onChange={setDateTo}
+              valueFormat="YYYY-MM-DD"
+              clearable
             />
           </Group>
-          <Group align="end">
-            <TextInput
-              label="File type"
-              placeholder="mp4"
-              value={fileType}
-              onChange={(event) => setFileType(event.currentTarget.value)}
-            />
+          <Select
+            aria-label="Download status"
+            placeholder="Download"
+            clearable
+            value={downloadFilter}
+            onChange={(value) => setDownloadFilter((value as DownloadFilter | null) ?? '')}
+            data={[
+              { value: 'pending', label: 'Pending links' },
+              { value: 'all', label: 'Complete' },
+              { value: 'partial', label: 'Partial' },
+              { value: 'none', label: 'Not downloaded' },
+              { value: 'unknown', label: 'No links' },
+            ]}
+          />
+          <Tooltip label="Search records">
+            <ActionIcon type="submit" size="lg" loading={loading} aria-label="Search records">
+              <IconSearch size={18} />
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label="Reset filters">
+            <ActionIcon type="button" size="lg" variant="light" aria-label="Reset filters" onClick={resetFilters}>
+              <IconRefresh size={18} />
+            </ActionIcon>
+          </Tooltip>
+        </div>
+      </form>
+
+      <Stack p="md" className="section" gap="sm">
+        <Group justify="space-between" gap="sm" wrap="nowrap" className="records-result-bar">
+          <Text size="sm" c="dimmed" className="nowrap">
+            {result.total ? `${start}-${end} / ${result.total}` : searched ? '0 records' : 'Loading records'}
+          </Text>
+          <Group gap="xs" wrap="nowrap">
             <NumberInput
-              label="Page size"
+              aria-label="Page size"
               className="records-page-size"
               value={pageSize}
               min={1}
@@ -155,35 +208,16 @@ export default function Records({ onOpenRecord }: { onOpenRecord: (id: number) =
               step={10}
               onChange={(value) => setPageSize(Number(value) || 50)}
             />
-            <Checkbox
-              label="Only undownloaded"
-              checked={onlyUndownloaded}
-              onChange={(event) => setOnlyUndownloaded(event.currentTarget.checked)}
+            <Pagination
+              value={page}
+              total={Math.max(result.total_pages, 1)}
+              disabled={loading || result.total_pages <= 1}
+              onChange={(nextPage) => {
+                setPage(nextPage);
+                void loadRecords(nextPage);
+              }}
             />
-            <Button type="submit" leftSection={<IconSearch size={16} />} loading={loading}>
-              Search
-            </Button>
-            <Button type="button" variant="light" leftSection={<IconRefresh size={16} />} onClick={resetFilters}>
-              Reset
-            </Button>
           </Group>
-        </Stack>
-      </form>
-
-      <Stack p="md" className="section" gap="sm">
-        <Group justify="space-between">
-          <Text size="sm" c="dimmed">
-            {result.total ? `${start}-${end} of ${result.total}` : searched ? '0 records' : 'Loading records'}
-          </Text>
-          <Pagination
-            value={page}
-            total={Math.max(result.total_pages, 1)}
-            disabled={loading || result.total_pages <= 1}
-            onChange={(nextPage) => {
-              setPage(nextPage);
-              void loadRecords(nextPage);
-            }}
-          />
         </Group>
 
         {result.items.length === 0 ? (

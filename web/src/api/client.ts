@@ -55,6 +55,7 @@ export const api = {
   platformRecords: (sourceId: number, limit: number) =>
     request<RecordSummary[]>(`/api/platforms/${sourceId}/records${params({ limit })}`),
   records: (query: {
+    record_id?: number;
     title?: string;
     actor?: string;
     source?: string;

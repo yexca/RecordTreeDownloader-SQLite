@@ -175,6 +175,10 @@ async def test_search_detail_stats_and_download_plan_endpoints(
         assert record_page["page_size"] == 25
         assert record_page["items"][0]["id"] == group_id
 
+        id_page = (await client.get("/api/records", params={"record_id": group_id})).json()
+        assert id_page["total"] == 1
+        assert id_page["items"][0]["id"] == group_id
+
         detail = (await client.get(f"/api/records/{group_id}")).json()
         assert detail["downloaded"] == "partial"
         assert len(detail["links"]) == 3

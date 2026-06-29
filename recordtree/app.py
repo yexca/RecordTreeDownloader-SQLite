@@ -275,6 +275,7 @@ class RecordTreeApp:
     def list_records(
         self,
         *,
+        record_id: int | None = None,
         title: str = "",
         actor: str = "",
         source: str = "",
@@ -289,6 +290,7 @@ class RecordTreeApp:
         conn = self._open_app_db()
         try:
             return SearchService(conn).list_records(
+                record_id=record_id,
                 title=title,
                 actor=actor,
                 source=source,

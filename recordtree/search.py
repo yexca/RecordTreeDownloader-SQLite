@@ -237,6 +237,7 @@ class SearchService:
     def list_records(
         self,
         *,
+        record_id: int | None = None,
         title: str = "",
         actor: str = "",
         source: str = "",
@@ -251,6 +252,7 @@ class SearchService:
         normalized_page = normalize_page(page)
         normalized_page_size = normalize_limit(page_size)
         where_sql, params = self._build_record_filters(
+            record_id=record_id,
             title=title,
             actor=actor,
             source=source,
@@ -682,6 +684,7 @@ class SearchService:
     def _build_record_filters(
         self,
         *,
+        record_id: int | None,
         title: str,
         actor: str,
         source: str,
@@ -705,6 +708,11 @@ class SearchService:
         clauses = ["rg.is_deleted = 0"]
         params: list[object] = []
 
+        if record_id is not None:
+            if record_id < 1:
+                raise ValidationError("Record id must be at least 1.")
+            clauses.append("rg.id = ?")
+            params.append(record_id)
         if title:
             text = f"%{normalize_search_text(title)}%"
             clauses.append(

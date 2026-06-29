@@ -142,6 +142,7 @@ def platform_records(source_id: int, limit: int = 50) -> list[dict[str, object]]
 
 @app.get("/api/records")
 def records(
+    record_id: int | None = None,
     title: str = "",
     actor: str = "",
     source: str = "",
@@ -155,6 +156,7 @@ def records(
 ) -> dict[str, object]:
     return _serialize(
         RecordTreeApp().list_records(
+            record_id=record_id,
             title=title,
             actor=actor,
             source=source,
