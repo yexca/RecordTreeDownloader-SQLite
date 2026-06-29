@@ -17,6 +17,8 @@ class AppConfig:
     include_par2_by_default: bool
     mega_get: str
     mega_whoami: str
+    mega_login: str
+    mega_logout: str
     prefer_xlsx_metadata: bool
 
 
@@ -35,6 +37,8 @@ def default_config() -> dict[str, object]:
         "mega": {
             "mega_get": "mega-get",
             "mega_whoami": "mega-whoami",
+            "mega_login": "mega-login",
+            "mega_logout": "mega-logout",
         },
         "import": {
             "prefer_xlsx_metadata": True,
@@ -92,6 +96,8 @@ def load_config(path: Path | None = None) -> AppConfig:
         ),
         mega_get=_string_value(mega, "mega_get", defaults["mega"]["mega_get"]),
         mega_whoami=_string_value(mega, "mega_whoami", defaults["mega"]["mega_whoami"]),
+        mega_login=_string_value(mega, "mega_login", defaults["mega"]["mega_login"]),
+        mega_logout=_string_value(mega, "mega_logout", defaults["mega"]["mega_logout"]),
         prefer_xlsx_metadata=_bool_value(
             import_config,
             "prefer_xlsx_metadata",
@@ -121,6 +127,8 @@ include_par2_by_default = false
 [mega]
 mega_get = "mega-get"
 mega_whoami = "mega-whoami"
+mega_login = "mega-login"
+mega_logout = "mega-logout"
 
 [import]
 prefer_xlsx_metadata = true

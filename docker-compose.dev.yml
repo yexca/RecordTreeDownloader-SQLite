@@ -15,8 +15,7 @@ services:
     volumes:
       - .:/workspace
       - recordtree-dev-node-modules:/workspace/web/node_modules
-      - megacmd-dev-home:/root
+      - ./env/megacmd-home-dev:/root
 
 volumes:
   recordtree-dev-node-modules:
-  megacmd-dev-home:

@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from recordtree.app import RecordTreeApp
 from recordtree.exceptions import ConfigError, NotFoundError, RecordTreeError, ValidationError
 
-from .schemas import ActorDownloadRequest, DownloadPlanRequest, DownloadRequest
+from .schemas import ActorDownloadRequest, DownloadPlanRequest, DownloadRequest, MegaLoginRequest
 from .serializers import to_json_safe
 from .jobs import JobManager
 
@@ -103,6 +103,27 @@ def job_events(job_id: str, after: int = 0) -> StreamingResponse:
 @app.get("/api/doctor")
 def doctor() -> dict[str, object]:
     return _serialize(RecordTreeApp().doctor())
+
+
+@app.get("/api/mega/status")
+def mega_status() -> dict[str, object]:
+    return _serialize(RecordTreeApp().mega_status())
+
+
+@app.post("/api/mega/login")
+def mega_login(request: MegaLoginRequest) -> dict[str, object]:
+    return _serialize(
+        RecordTreeApp().mega_login(
+            email=request.email,
+            password=request.password,
+            auth_code=request.auth_code,
+        )
+    )
+
+
+@app.post("/api/mega/logout")
+def mega_logout() -> dict[str, object]:
+    return _serialize(RecordTreeApp().mega_logout())
 
 
 @app.get("/api/stats")

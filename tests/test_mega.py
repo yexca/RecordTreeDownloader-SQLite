@@ -105,3 +105,44 @@ def test_download_link_streams_process_output(monkeypatch, tmp_path: Path) -> No
             },
         )
     ]
+
+
+def test_login_uses_megacmd_non_interactive_arguments(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_run(args, shell, capture_output, text, encoding, errors, timeout):
+        calls.append(
+            {
+                "args": args,
+                "shell": shell,
+                "capture_output": capture_output,
+                "text": text,
+                "encoding": encoding,
+                "errors": errors,
+                "timeout": timeout,
+            }
+        )
+        return Completed(0, "logged in", "")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    result = mega.login_account("mega-login", "user@example.com", "secret", "123456")
+
+    assert result.exit_code == 0
+    assert calls[0]["args"] == ["mega-login", "user@example.com", "secret", "--auth-code=123456"]
+    assert calls[0]["shell"] is False
+
+
+def test_logout_runs_mega_logout(monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return Completed(0, "logged out", "")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+
+    result = mega.logout_account("mega-logout")
+
+    assert result.exit_code == 0
+    assert calls == [["mega-logout"]]

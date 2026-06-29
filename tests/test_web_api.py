@@ -440,6 +440,58 @@ async def test_blocked_download_job_reports_failed_status_and_result(
         assert any(event["type"] == "failed" for event in job["events"])
 
 
+async def test_mega_status_and_login_logout_endpoints(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    RecordTreeApp().init()
+    monkeypatch.setattr("recordtree.mega.resolve_executable", lambda configured: configured)
+    login_states = [MegaLoginStatus(False, 1, "not logged in")]
+    login_calls = []
+    logout_calls = []
+
+    def fake_check_login(_whoami: str) -> MegaLoginStatus:
+        return login_states[-1]
+
+    def fake_login(mega_login: str, email: str, password: str, auth_code: str | None = None):
+        login_calls.append((mega_login, email, password, auth_code))
+        login_states.append(MegaLoginStatus(True, 0, "Account: user@example.com"))
+        return MegaCommandResult(0, "ok", "")
+
+    def fake_logout(mega_logout: str):
+        logout_calls.append(mega_logout)
+        login_states.append(MegaLoginStatus(False, 1, "not logged in"))
+        return MegaCommandResult(0, "ok", "")
+
+    monkeypatch.setattr("recordtree.mega.check_login", fake_check_login)
+    monkeypatch.setattr("recordtree.mega.login_account", fake_login)
+    monkeypatch.setattr("recordtree.mega.logout_account", fake_logout)
+
+    async with _test_client() as client:
+        status = (await client.get("/api/mega/status")).json()
+        assert status["login"]["logged_in"] is False
+        assert status["mega_login"]["available"] is True
+
+        logged_in = (
+            await client.post(
+                "/api/mega/login",
+                json={
+                    "email": " user@example.com ",
+                    "password": "secret",
+                    "auth_code": "123456",
+                },
+            )
+        ).json()
+        assert logged_in["login"]["logged_in"] is True
+        assert "secret" not in json.dumps(logged_in)
+        assert login_calls == [("mega-login", "user@example.com", "secret", "123456")]
+
+        logged_out = (await client.post("/api/mega/logout")).json()
+        assert logged_out["login"]["logged_in"] is False
+        assert logout_calls == ["mega-logout"]
+
+
 async def test_missing_job_returns_404() -> None:
     async with _test_client() as client:
         response = await client.get("/api/jobs/not-a-real-job")

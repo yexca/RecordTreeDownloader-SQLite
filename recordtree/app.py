@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from collections.abc import Callable
 from dataclasses import replace
+import os
 from pathlib import Path
 
 from . import config as config_module
@@ -26,6 +27,8 @@ from .models import (
     LinkItem,
     InitResult,
     MegaCommandResult,
+    MegaCommandStatus,
+    MegaAccountStatus,
     RecordPage,
     RecordDetail,
     RecordSummary,
@@ -113,13 +116,64 @@ class RecordTreeApp:
                         DoctorCheck(
                             "mega_login",
                             "fail",
-                            "MEGA is not logged in. Run mega-login manually.",
+                            "MEGA is not logged in. Use Settings or run mega-login.",
                         )
                     )
             else:
                 checks.append(DoctorCheck("mega_login", "warn", "Skipped because mega-whoami is unavailable."))
 
         return DoctorResult(checks)
+
+    def mega_status(self) -> MegaAccountStatus:
+        config_path = config_module.ensure_config(Path("env/config.toml"))
+        app_config = config_module.load_config(config_path)
+        get_status = _mega_command_status(app_config.mega_get)
+        whoami_status = _mega_command_status(app_config.mega_whoami)
+        login_status = _mega_command_status(app_config.mega_login)
+        logout_status = _mega_command_status(app_config.mega_logout)
+        if whoami_status.resolved is None:
+            login = MegaLoginStatus(False, 1, "Skipped because mega-whoami is unavailable.")
+        else:
+            login = mega.check_login(whoami_status.resolved)
+        return MegaAccountStatus(
+            login=login,
+            mega_get=get_status,
+            mega_whoami=whoami_status,
+            mega_login=login_status,
+            mega_logout=logout_status,
+            home_dir=Path.home(),
+            persistence_dir=_megacmd_persistence_dir(),
+        )
+
+    def mega_login(
+        self,
+        email: str,
+        password: str,
+        auth_code: str | None = None,
+    ) -> MegaAccountStatus:
+        clean_email = email.strip()
+        if not clean_email:
+            raise ValidationError("MEGA email is required.")
+        if not password:
+            raise ValidationError("MEGA password is required.")
+        config_path = config_module.ensure_config(Path("env/config.toml"))
+        app_config = config_module.load_config(config_path)
+        mega_login = mega.resolve_executable(app_config.mega_login)
+        result = mega.login_account(mega_login, clean_email, password, auth_code.strip() if auth_code else None)
+        if result.exit_code != 0:
+            message = _command_message(result.stdout, result.stderr) or f"mega-login failed with exit code {result.exit_code}."
+            raise ExternalToolError(message.replace(password, "<redacted>"))
+        return self.mega_status()
+
+    def mega_logout(self) -> MegaAccountStatus:
+        config_path = config_module.ensure_config(Path("env/config.toml"))
+        app_config = config_module.load_config(config_path)
+        mega_logout = mega.resolve_executable(app_config.mega_logout)
+        result = mega.logout_account(mega_logout)
+        if result.exit_code != 0:
+            message = _command_message(result.stdout, result.stderr) or f"mega-logout failed with exit code {result.exit_code}."
+            raise ExternalToolError(message)
+        return self.mega_status()
 
     def import_file(
         self,
@@ -410,7 +464,7 @@ class RecordTreeApp:
 
             login = mega.check_login(mega_whoami)
             if not login.logged_in:
-                message = "MEGA is not logged in. Run mega-login manually."
+                message = "MEGA is not logged in. Use Settings or run mega-login."
                 download_id = downloads.create_from_plan(plan, "blocked", message)
                 conn.commit()
                 return DownloadExecutionResult(
@@ -747,6 +801,31 @@ def _check_executable(name: str, configured: str) -> tuple[DoctorCheck, str | No
     except ExternalToolError as error:
         return DoctorCheck(name, "fail", str(error)), None
     return DoctorCheck(name, "pass", resolved), resolved
+
+
+def _mega_command_status(configured: str) -> MegaCommandStatus:
+    try:
+        resolved = mega.resolve_executable(configured)
+    except ExternalToolError as error:
+        return MegaCommandStatus(
+            configured=configured,
+            resolved=None,
+            available=False,
+            message=str(error),
+        )
+    return MegaCommandStatus(
+        configured=configured,
+        resolved=resolved,
+        available=True,
+        message=resolved,
+    )
+
+
+def _megacmd_persistence_dir() -> Path:
+    home = Path.home()
+    if os.name != "nt" and home == Path("/root"):
+        return home
+    return home / ".megaCmd"
 
 
 def _command_message(stdout: str, stderr: str) -> str | None:

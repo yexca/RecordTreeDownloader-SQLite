@@ -13,8 +13,5 @@ services:
       - ./downloads:/app/downloads
       - ./logs:/app/logs
       - ./files:/app/files
-      - megacmd-home:/root
+      - ./env/megacmd-home:/root
     restart: unless-stopped
-
-volumes:
-  megacmd-home:

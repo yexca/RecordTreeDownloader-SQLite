@@ -223,6 +223,25 @@ class MegaLoginStatus:
 
 
 @dataclass(frozen=True)
+class MegaCommandStatus:
+    configured: str
+    resolved: str | None
+    available: bool
+    message: str
+
+
+@dataclass(frozen=True)
+class MegaAccountStatus:
+    login: MegaLoginStatus
+    mega_get: MegaCommandStatus
+    mega_whoami: MegaCommandStatus
+    mega_login: MegaCommandStatus
+    mega_logout: MegaCommandStatus
+    home_dir: Path
+    persistence_dir: Path
+
+
+@dataclass(frozen=True)
 class DoctorCheck:
     name: str
     status: str

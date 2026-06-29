@@ -197,6 +197,29 @@ export interface DoctorCheck {
   message: string;
 }
 
+export interface MegaLoginStatus {
+  logged_in: boolean;
+  exit_code: number;
+  message: string;
+}
+
+export interface MegaCommandStatus {
+  configured: string;
+  resolved: string | null;
+  available: boolean;
+  message: string;
+}
+
+export interface MegaAccountStatus {
+  login: MegaLoginStatus;
+  mega_get: MegaCommandStatus;
+  mega_whoami: MegaCommandStatus;
+  mega_login: MegaCommandStatus;
+  mega_logout: MegaCommandStatus;
+  home_dir: string;
+  persistence_dir: string;
+}
+
 export interface ApiError {
   detail: string;
   error?: string;

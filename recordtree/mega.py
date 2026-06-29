@@ -35,6 +35,22 @@ def check_login(mega_whoami: str) -> MegaLoginStatus:
     )
 
 
+def login_account(
+    mega_login: str,
+    email: str,
+    password: str,
+    auth_code: str | None = None,
+) -> MegaCommandResult:
+    args = [mega_login, email, password]
+    if auth_code:
+        args.append(f"--auth-code={auth_code}")
+    return _run_command(args, timeout=COMMAND_TIMEOUT_SECONDS)
+
+
+def logout_account(mega_logout: str) -> MegaCommandResult:
+    return _run_command([mega_logout], timeout=COMMAND_TIMEOUT_SECONDS)
+
+
 def download_link(
     mega_get: str,
     mega_url: str,

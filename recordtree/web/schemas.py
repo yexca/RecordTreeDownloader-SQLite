@@ -46,3 +46,9 @@ class ActorDownloadRequest(BaseModel):
         if self.output is None or not self.output.strip():
             return None
         return Path(self.output)
+
+
+class MegaLoginRequest(BaseModel):
+    email: str
+    password: str
+    auth_code: str | None = None

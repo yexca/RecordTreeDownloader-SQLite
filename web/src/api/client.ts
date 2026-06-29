@@ -5,6 +5,7 @@ import type {
   DownloadPlan,
   Job,
   JobCreateResponse,
+  MegaAccountStatus,
   PlatformSummary,
   RecordDetail,
   RecordPage,
@@ -44,6 +45,16 @@ const params = (values: Record<string, string | number | boolean | null | undefi
 export const api = {
   stats: () => request<StatsResult>('/api/stats'),
   doctor: () => request<DoctorResult>('/api/doctor'),
+  megaStatus: () => request<MegaAccountStatus>('/api/mega/status'),
+  megaLogin: (body: { email: string; password: string; auth_code?: string | null }) =>
+    request<MegaAccountStatus>('/api/mega/login', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  megaLogout: () =>
+    request<MegaAccountStatus>('/api/mega/logout', {
+      method: 'POST',
+    }),
   actors: (query: string, limit: number) =>
     request<ActorSummary[]>(`/api/actors${params({ query, limit })}`),
   actor: (actorId: number) => request<ActorSummary>(`/api/actors/${actorId}`),

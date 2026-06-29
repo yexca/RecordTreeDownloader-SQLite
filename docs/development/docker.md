@@ -24,14 +24,14 @@ docker compose exec recordtree-web recordtree doctor
 
 ## MEGA Login
 
-MEGA credentials are managed by MEGAcmd, not by RecordTreeDownloader SQLite. Log in inside the container with:
+MEGA credentials are managed by MEGAcmd, not by RecordTreeDownloader SQLite. Log in from the WebUI Settings page or inside the container with:
 
 ```bash
 docker compose exec recordtree-web mega-login
 docker compose exec recordtree-web recordtree doctor
 ```
 
-The `megacmd-home` Docker named volume is mounted at `/root` and stores MEGAcmd login state. Recreating the container keeps this login state as long as the named volume is not removed.
+The host directory `./env/megacmd-home` is mounted at `/root` and stores MEGAcmd login state. Recreating the container keeps this login state as long as that directory is not removed.
 
 ## Persistent Data
 
@@ -42,7 +42,7 @@ The compose file mounts these host directories into the container:
 - `./logs:/app/logs` for import error CSVs and logs
 - `./files:/app/files` for uploaded import files
 
-Runtime data survives container recreation because these paths live on the host. The MEGAcmd login state survives through the `megacmd-home` named volume.
+Runtime data survives container recreation because these paths live on the host. The MEGAcmd login state survives through `./env/megacmd-home`.
 
 ## Useful Commands
 
@@ -51,7 +51,4 @@ docker compose logs -f recordtree-web
 docker compose exec recordtree-web recordtree stats
 docker compose exec recordtree-web recordtree import /app/files/example.json
 docker compose down
-docker compose down -v
 ```
-
-Use `docker compose down -v` only when you intentionally want to delete the MEGAcmd login volume.
