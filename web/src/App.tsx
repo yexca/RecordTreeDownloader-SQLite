@@ -172,7 +172,7 @@ export default function App() {
           onClick={() => navigate('/settings')}
         />
         <NavLink
-          label="System Status"
+          label="Maintenance"
           leftSection={<IconSettings size={18} />}
           active={route === 'status'}
           onClick={() => navigate('/status')}

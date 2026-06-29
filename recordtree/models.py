@@ -281,6 +281,53 @@ class StatsResult:
 
 
 @dataclass(frozen=True)
+class BackupSummary:
+    path: Path
+    size_bytes: int
+    created_at: str
+
+
+@dataclass(frozen=True)
+class MaintenanceSummary:
+    doctor: DoctorResult
+    doctor_ok: bool
+    stats: StatsResult
+    database_path: Path
+    database_size_bytes: int | None
+    backup_dir: Path
+    latest_backup: BackupSummary | None
+
+
+@dataclass(frozen=True)
+class MaintenanceActionResult:
+    ok: bool
+    message: str
+    started_at: str
+    finished_at: str
+
+
+@dataclass(frozen=True)
+class IntegrityResult:
+    ok: bool
+    quick_check: str
+    foreign_key_violations: int
+    checks: list[DoctorCheck]
+
+
+@dataclass(frozen=True)
+class OrphanReport:
+    ok: bool
+    actors_without_records: int
+    sources_without_records: int
+    record_actor_orphans: int
+    record_source_orphans: int
+    links_without_record: int
+    downloads_without_record: int
+    download_items_without_download: int
+    download_items_without_link: int
+
+
+@dataclass(frozen=True)
 class DownloadLink:
     id: int
     link_order: int

@@ -3,9 +3,11 @@ from __future__ import annotations
 import csv
 from collections.abc import Callable
 from dataclasses import replace
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import sqlite3
 
 from . import config as config_module
 from . import db
@@ -18,6 +20,7 @@ from .importer.service import ImportService, apply_upsert_result
 from .models import (
     ActorSummary,
     ActorDownloadResult,
+    BackupSummary,
     DoctorCheck,
     DoctorResult,
     DownloadExecutionResult,
@@ -30,10 +33,14 @@ from .models import (
     ImportProgress,
     ImportStats,
     LinkItem,
+    IntegrityResult,
     InitResult,
+    MaintenanceActionResult,
+    MaintenanceSummary,
     MegaCommandResult,
     MegaCommandStatus,
     MegaAccountStatus,
+    OrphanReport,
     RecordPage,
     RecordDetail,
     RecordSummary,
@@ -345,6 +352,171 @@ class RecordTreeApp:
             return SearchService(conn).stats()
         finally:
             conn.close()
+
+    def maintenance_summary(self) -> MaintenanceSummary:
+        config_path = config_module.ensure_config(Path("env/config.toml"))
+        app_config = config_module.load_config(config_path)
+        database_size = app_config.database_path.stat().st_size if app_config.database_path.exists() else None
+        backup_dir = app_config.logs_dir / "backups"
+        doctor = self.doctor()
+        return MaintenanceSummary(
+            doctor=doctor,
+            doctor_ok=doctor.ok,
+            stats=self.stats(),
+            database_path=app_config.database_path,
+            database_size_bytes=database_size,
+            backup_dir=backup_dir,
+            latest_backup=_latest_backup(backup_dir),
+        )
+
+    def backup_database(self) -> BackupSummary:
+        config_path = config_module.ensure_config(Path("env/config.toml"))
+        app_config = config_module.load_config(config_path)
+        if not app_config.database_path.exists():
+            raise ConfigError(f"Database file does not exist: {app_config.database_path}")
+        backup_dir = app_config.logs_dir / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        created_at = _timestamp_for_filename()
+        backup_path = backup_dir / f"recordtree-{created_at}.sqlite3"
+
+        source = db.connect(app_config.database_path)
+        target = sqlite3.connect(backup_path)
+        try:
+            source.backup(target)
+            target.commit()
+        finally:
+            target.close()
+            source.close()
+
+        return BackupSummary(
+            path=backup_path,
+            size_bytes=backup_path.stat().st_size,
+            created_at=created_at,
+        )
+
+    def database_integrity(self) -> IntegrityResult:
+        conn = self._open_app_db()
+        try:
+            quick_check = str(conn.execute("PRAGMA quick_check").fetchone()[0])
+            violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+        finally:
+            conn.close()
+        checks = [
+            DoctorCheck("quick_check", "pass" if quick_check == "ok" else "fail", quick_check),
+            DoctorCheck(
+                "foreign_key_check",
+                "pass" if not violations else "fail",
+                f"{len(violations)} violation(s)",
+            ),
+        ]
+        return IntegrityResult(
+            ok=quick_check == "ok" and not violations,
+            quick_check=quick_check,
+            foreign_key_violations=len(violations),
+            checks=checks,
+        )
+
+    def orphan_report(self) -> OrphanReport:
+        conn = self._open_app_db()
+        try:
+            counts = {
+                "actors_without_records": _count_sql(
+                    conn,
+                    """
+                    SELECT COUNT(*)
+                    FROM actors a
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM record_group_actors rga
+                        WHERE rga.actor_id = a.id
+                    )
+                    """,
+                ),
+                "sources_without_records": _count_sql(
+                    conn,
+                    """
+                    SELECT COUNT(*)
+                    FROM sources s
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM record_group_sources rgs
+                        WHERE rgs.source_id = s.id
+                    )
+                    """,
+                ),
+                "record_actor_orphans": _count_sql(
+                    conn,
+                    """
+                    SELECT COUNT(*)
+                    FROM record_group_actors rga
+                    WHERE NOT EXISTS (SELECT 1 FROM record_groups rg WHERE rg.id = rga.record_group_id)
+                       OR NOT EXISTS (SELECT 1 FROM actors a WHERE a.id = rga.actor_id)
+                    """,
+                ),
+                "record_source_orphans": _count_sql(
+                    conn,
+                    """
+                    SELECT COUNT(*)
+                    FROM record_group_sources rgs
+                    WHERE NOT EXISTS (SELECT 1 FROM record_groups rg WHERE rg.id = rgs.record_group_id)
+                       OR NOT EXISTS (SELECT 1 FROM sources s WHERE s.id = rgs.source_id)
+                    """,
+                ),
+                "links_without_record": _count_sql(
+                    conn,
+                    """
+                    SELECT COUNT(*)
+                    FROM download_links dl
+                    WHERE NOT EXISTS (SELECT 1 FROM record_groups rg WHERE rg.id = dl.record_group_id)
+                    """,
+                ),
+                "downloads_without_record": _count_sql(
+                    conn,
+                    """
+                    SELECT COUNT(*)
+                    FROM downloads d
+                    WHERE NOT EXISTS (SELECT 1 FROM record_groups rg WHERE rg.id = d.record_group_id)
+                    """,
+                ),
+                "download_items_without_download": _count_sql(
+                    conn,
+                    """
+                    SELECT COUNT(*)
+                    FROM download_items di
+                    WHERE NOT EXISTS (SELECT 1 FROM downloads d WHERE d.id = di.download_id)
+                    """,
+                ),
+                "download_items_without_link": _count_sql(
+                    conn,
+                    """
+                    SELECT COUNT(*)
+                    FROM download_items di
+                    WHERE NOT EXISTS (SELECT 1 FROM download_links dl WHERE dl.id = di.link_id)
+                    """,
+                ),
+            }
+        finally:
+            conn.close()
+        return OrphanReport(
+            ok=all(value == 0 for value in counts.values()),
+            **counts,
+        )
+
+    def analyze_database(self) -> MaintenanceActionResult:
+        started_at = _utc_iso()
+        conn = self._open_app_db()
+        try:
+            conn.execute("ANALYZE")
+            conn.commit()
+        finally:
+            conn.close()
+        finished_at = _utc_iso()
+        return MaintenanceActionResult(
+            ok=True,
+            message="SQLite query planner statistics refreshed.",
+            started_at=started_at,
+            finished_at=finished_at,
+        )
 
     def search_actor(self, name: str, limit: int = 50) -> list[ActorSummary]:
         conn = self._open_app_db()
@@ -982,6 +1154,35 @@ def _megacmd_persistence_dir() -> Path:
     if os.name != "nt" and home == Path("/root"):
         return home
     return home / ".megaCmd"
+
+
+def _utc_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _timestamp_for_filename() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _latest_backup(backup_dir: Path) -> BackupSummary | None:
+    if not backup_dir.exists():
+        return None
+    backups = sorted(backup_dir.glob("recordtree-*.sqlite3"), key=lambda path: path.stat().st_mtime, reverse=True)
+    if not backups:
+        return None
+    latest = backups[0]
+    return BackupSummary(
+        path=latest,
+        size_bytes=latest.stat().st_size,
+        created_at=datetime.fromtimestamp(latest.stat().st_mtime, timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
+    )
+
+
+def _count_sql(conn, sql: str) -> int:
+    return int(conn.execute(sql).fetchone()[0])
 
 
 def _download_request_json(

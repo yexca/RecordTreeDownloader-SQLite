@@ -208,6 +208,31 @@ def stats() -> dict[str, object]:
     return _serialize(RecordTreeApp().stats())
 
 
+@app.get("/api/maintenance/summary")
+def maintenance_summary() -> dict[str, object]:
+    return _serialize(RecordTreeApp().maintenance_summary())
+
+
+@app.post("/api/maintenance/backup")
+def maintenance_backup() -> dict[str, object]:
+    return _serialize(RecordTreeApp().backup_database())
+
+
+@app.post("/api/maintenance/integrity-check")
+def maintenance_integrity_check() -> dict[str, object]:
+    return _serialize(RecordTreeApp().database_integrity())
+
+
+@app.get("/api/maintenance/orphans")
+def maintenance_orphans() -> dict[str, object]:
+    return _serialize(RecordTreeApp().orphan_report())
+
+
+@app.post("/api/maintenance/analyze")
+def maintenance_analyze() -> dict[str, object]:
+    return _serialize(RecordTreeApp().analyze_database())
+
+
 @app.get("/api/actors")
 def actors(query: str = "", limit: int = 50) -> list[dict[str, object]]:
     return _serialize(RecordTreeApp().search_actor(query, limit))

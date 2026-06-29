@@ -16,6 +16,48 @@ export interface StatsResult {
   recent_downloads: DownloadSummary[];
 }
 
+export interface BackupSummary {
+  path: string;
+  size_bytes: number;
+  created_at: string;
+}
+
+export interface MaintenanceSummary {
+  doctor: DoctorResult;
+  doctor_ok: boolean;
+  stats: StatsResult;
+  database_path: string;
+  database_size_bytes: number | null;
+  backup_dir: string;
+  latest_backup: BackupSummary | null;
+}
+
+export interface MaintenanceActionResult {
+  ok: boolean;
+  message: string;
+  started_at: string;
+  finished_at: string;
+}
+
+export interface IntegrityResult {
+  ok: boolean;
+  quick_check: string;
+  foreign_key_violations: number;
+  checks: DoctorCheck[];
+}
+
+export interface OrphanReport {
+  ok: boolean;
+  actors_without_records: number;
+  sources_without_records: number;
+  record_actor_orphans: number;
+  record_source_orphans: number;
+  links_without_record: number;
+  downloads_without_record: number;
+  download_items_without_download: number;
+  download_items_without_link: number;
+}
+
 export interface ImportSummary {
   id: number;
   source_type: string;

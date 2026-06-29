@@ -9,9 +9,14 @@ import type {
   ImportDetail,
   ImportErrorPage,
   ImportPage,
+  BackupSummary,
+  IntegrityResult,
   Job,
   JobCreateResponse,
+  MaintenanceActionResult,
+  MaintenanceSummary,
   MegaAccountStatus,
+  OrphanReport,
   PlatformSummary,
   RecordDetail,
   RecordPage,
@@ -51,6 +56,20 @@ const params = (values: Record<string, string | number | boolean | null | undefi
 export const api = {
   stats: () => request<StatsResult>('/api/stats'),
   doctor: () => request<DoctorResult>('/api/doctor'),
+  maintenanceSummary: () => request<MaintenanceSummary>('/api/maintenance/summary'),
+  maintenanceBackup: () =>
+    request<BackupSummary>('/api/maintenance/backup', {
+      method: 'POST',
+    }),
+  maintenanceIntegrity: () =>
+    request<IntegrityResult>('/api/maintenance/integrity-check', {
+      method: 'POST',
+    }),
+  maintenanceOrphans: () => request<OrphanReport>('/api/maintenance/orphans'),
+  maintenanceAnalyze: () =>
+    request<MaintenanceActionResult>('/api/maintenance/analyze', {
+      method: 'POST',
+    }),
   megaStatus: () => request<MegaAccountStatus>('/api/mega/status'),
   megaLogin: (body: { email: string; password: string; auth_code?: string | null }) =>
     request<MegaAccountStatus>('/api/mega/login', {

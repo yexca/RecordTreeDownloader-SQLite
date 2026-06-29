@@ -207,6 +207,42 @@ async def test_search_detail_stats_and_download_plan_endpoints(
     assert plan["type_filter"] == [".m4a", ".mp4"]
 
 
+async def test_maintenance_endpoints_report_and_run_safe_actions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _setup_record(tmp_path, monkeypatch)
+    monkeypatch.setattr("recordtree.mega.resolve_executable", lambda configured: configured)
+    monkeypatch.setattr(
+        "recordtree.mega.check_login",
+        lambda _whoami: MegaLoginStatus(True, 0, "Account: test"),
+    )
+
+    async with _test_client() as client:
+        summary = (await client.get("/api/maintenance/summary")).json()
+        assert summary["doctor_ok"] is True
+        assert summary["stats"]["total_record_groups"] == 1
+        assert summary["database_size_bytes"] > 0
+        assert summary["latest_backup"] is None
+
+        backup = (await client.post("/api/maintenance/backup")).json()
+        assert Path(backup["path"]).exists()
+        assert backup["size_bytes"] > 0
+
+        integrity = (await client.post("/api/maintenance/integrity-check")).json()
+        assert integrity["ok"] is True
+        assert integrity["quick_check"] == "ok"
+        assert integrity["foreign_key_violations"] == 0
+
+        orphans = (await client.get("/api/maintenance/orphans")).json()
+        assert orphans["ok"] is True
+        assert orphans["links_without_record"] == 0
+
+        analyze = (await client.post("/api/maintenance/analyze")).json()
+        assert analyze["ok"] is True
+        assert "refreshed" in analyze["message"]
+
+
 async def test_api_maps_project_errors_to_http_responses(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
