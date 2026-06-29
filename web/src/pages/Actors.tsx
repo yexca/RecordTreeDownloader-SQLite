@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Badge,
   Button,
   Group,
   Pagination,
@@ -94,22 +95,27 @@ export default function Actors() {
         <div>
           <Title order={2}>Actors</Title>
           <Text size="sm" c="dimmed">
-            Browse actors and inspect their record groups.
+            Browse actor directories and open related records.
           </Text>
         </div>
       </Group>
 
-      <div className="split-layout">
-        <Stack p="md" className="section split-pane" gap="sm">
+      <div className="actors-layout">
+        <Stack className="section actor-directory" gap={0}>
           <form onSubmit={loadActors}>
-            <Stack gap="sm">
-              <Group justify="space-between" align="center">
-                <Title order={3} size="h4">
-                  Actor Search
-                </Title>
+            <Stack gap="sm" p="md" className="actor-directory-toolbar">
+              <Group justify="space-between" align="start" wrap="nowrap">
+                <div>
+                  <Title order={3} size="h4">
+                    Directory
+                  </Title>
+                  <Text size="xs" c="dimmed">
+                    {actors.length} loaded, 25 per page
+                  </Text>
+                </div>
                 <Tooltip label="Refresh actors">
                   <ActionIcon
-                    variant="light"
+                    variant="subtle"
                     size={32}
                     aria-label="Refresh actors"
                     loading={loadingActors}
@@ -120,92 +126,98 @@ export default function Actors() {
                 </Tooltip>
               </Group>
               <TextInput
-                label="Actor"
+                aria-label="Search actor"
                 placeholder="Search actor name"
                 value={query}
                 onChange={(event) => setQuery(event.currentTarget.value)}
+                leftSection={<IconSearch size={16} />}
               />
-              <Group justify="space-between" align="center">
-                <Text size="xs" c="dimmed">
-                  Showing 25 actors per page
-                </Text>
-                <Button type="submit" leftSection={<IconSearch size={16} />} loading={loadingActors}>
+              <Group justify="end">
+                <Button type="submit" loading={loadingActors}>
                   Search
                 </Button>
               </Group>
             </Stack>
           </form>
 
-          {actorError ? (
-            <ErrorBlock message={actorError} />
-          ) : loadingActors ? (
-            <LoadingBlock />
-          ) : actors.length === 0 ? (
-            <EmptyState message="No actors found." />
-          ) : (
-            <>
+          <div className="actor-directory-body">
+            {actorError ? (
+              <ErrorBlock message={actorError} />
+            ) : loadingActors ? (
+              <LoadingBlock />
+            ) : actors.length === 0 ? (
+              <EmptyState message="No actors found." />
+            ) : (
               <ScrollArea.Autosize mah="calc(100vh - 330px)" type="auto">
-                <Table striped highlightOnHover withTableBorder verticalSpacing={6} fz="sm">
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Name</Table.Th>
-                      <Table.Th className="nowrap">Records</Table.Th>
-                      <Table.Th className="nowrap">Undownloaded</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {pageActors.map((actor) => (
-                      <Table.Tr
-                        key={actor.id}
-                        className="click-row"
-                        data-selected={selectedActor?.id === actor.id || undefined}
-                        onClick={() => loadActorRecords(actor)}
-                      >
-                        <Table.Td>
-                          <Text size="sm" fw={600} className="truncate-cell" title={actor.name}>
-                            {actor.name}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td className="nowrap">{actor.record_count}</Table.Td>
-                        <Table.Td className="nowrap">{actor.undownloaded_count}</Table.Td>
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
+                <Stack gap={4} p="xs">
+                  {pageActors.map((actor) => (
+                    <button
+                      key={actor.id}
+                      type="button"
+                      className="actor-list-item"
+                      data-selected={selectedActor?.id === actor.id || undefined}
+                      onClick={() => loadActorRecords(actor)}
+                    >
+                      <span className="actor-list-main">
+                        <Text size="sm" fw={700} className="truncate-cell" title={actor.name}>
+                          {actor.name}
+                        </Text>
+                        <Text size="xs" c="dimmed">
+                          {actor.record_count} records
+                        </Text>
+                      </span>
+                      <Badge variant="light" color={actor.undownloaded_count > 0 ? 'yellow' : 'teal'} size="sm">
+                        {actor.undownloaded_count}
+                      </Badge>
+                    </button>
+                  ))}
+                </Stack>
               </ScrollArea.Autosize>
+            )}
+          </div>
 
-              <Group justify="space-between" align="center" wrap="nowrap">
-                <Text size="xs" c="dimmed">
-                  {rangeStart}-{rangeEnd} of {actors.length}
-                </Text>
-                <Pagination
-                  total={totalPages}
-                  value={page}
-                  onChange={setPage}
-                  size="sm"
-                  siblings={1}
-                  boundaries={1}
-                />
-              </Group>
-            </>
+          {actors.length > 0 && !actorError && (
+            <Group className="actor-directory-footer" justify="space-between" align="center" wrap="nowrap">
+              <Text size="xs" c="dimmed">
+                {rangeStart}-{rangeEnd} of {actors.length}
+              </Text>
+              <Pagination
+                total={totalPages}
+                value={page}
+                onChange={setPage}
+                size="xs"
+                siblings={0}
+                boundaries={1}
+              />
+            </Group>
           )}
         </Stack>
 
-        <Stack p="md" className="section split-pane" gap="md">
+        <Stack className="actor-workspace" gap="md">
           {!selectedActor ? (
-            <EmptyState message="Select an actor to view records." />
+            <Stack className="section actor-empty-state" align="center" justify="center" gap="xs">
+              <Title order={3} size="h4">
+                Select an actor
+              </Title>
+              <Text size="sm" c="dimmed" ta="center">
+                Choose an actor from the directory to review records and download coverage.
+              </Text>
+            </Stack>
           ) : selectedRecordId ? (
             <RecordDetail idOrKey={String(selectedRecordId)} onBack={() => setSelectedRecordId(null)} />
           ) : (
             <>
-              <Group justify="space-between" align="start">
+              <Group className="section actor-summary" justify="space-between" align="start" wrap="nowrap">
                 <div>
                   <Title order={3} size="h4">
                     {selectedActor.name}
                   </Title>
-                  <Text size="sm" c="dimmed">
-                    {selectedActor.record_count} records, {selectedActor.undownloaded_count} undownloaded
-                  </Text>
+                  <Group gap="xs" mt={4}>
+                    <Badge variant="light">{selectedActor.record_count} records</Badge>
+                    <Badge variant="light" color={selectedActor.undownloaded_count > 0 ? 'yellow' : 'teal'}>
+                      {selectedActor.undownloaded_count} undownloaded
+                    </Badge>
+                  </Group>
                 </div>
                 <Button
                   variant="subtle"
@@ -220,15 +232,25 @@ export default function Actors() {
                 </Button>
               </Group>
 
-              {recordError ? (
-                <ErrorBlock message={recordError} />
-              ) : loadingRecords ? (
-                <LoadingBlock />
-              ) : records.length === 0 ? (
-                <EmptyState message="No records found for this actor." />
-              ) : (
-                <RecordTable records={records} onOpen={setSelectedRecordId} />
-              )}
+              <Stack p="md" className="section" gap="md">
+                <Group justify="space-between" align="center">
+                  <Title order={3} size="h4">
+                    Records
+                  </Title>
+                  <Text size="xs" c="dimmed">
+                    Sorted by delivery date
+                  </Text>
+                </Group>
+                {recordError ? (
+                  <ErrorBlock message={recordError} />
+                ) : loadingRecords ? (
+                  <LoadingBlock />
+                ) : records.length === 0 ? (
+                  <EmptyState message="No records found for this actor." />
+                ) : (
+                  <RecordTable records={records} onOpen={setSelectedRecordId} />
+                )}
+              </Stack>
             </>
           )}
         </Stack>

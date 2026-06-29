@@ -76,6 +76,72 @@ body {
   min-width: 0;
 }
 
+.actors-layout {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.actor-directory {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.actor-directory-toolbar {
+  border-bottom: 1px solid #dde3e1;
+}
+
+.actor-directory-body {
+  min-height: 320px;
+}
+
+.actor-directory-footer {
+  border-top: 1px solid #dde3e1;
+  padding: 10px 12px;
+}
+
+.actor-list-item {
+  display: flex;
+  width: 100%;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 10px;
+  text-align: left;
+}
+
+.actor-list-item:hover {
+  background: #f0f7f5;
+}
+
+.actor-list-item[data-selected='true'] {
+  background: #dff1ec;
+}
+
+.actor-list-main {
+  min-width: 0;
+}
+
+.actor-workspace {
+  min-width: 0;
+}
+
+.actor-empty-state {
+  min-height: 360px;
+}
+
+.actor-summary {
+  padding: 16px;
+}
+
 .dropzone {
   border-radius: 8px;
 }
@@ -91,6 +157,10 @@ body {
   }
 
   .split-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .actors-layout {
     grid-template-columns: 1fr;
   }
 }
