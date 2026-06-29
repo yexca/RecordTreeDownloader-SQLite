@@ -111,7 +111,7 @@ async def test_health_and_init_endpoints(tmp_path: Path, monkeypatch: pytest.Mon
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["schema_version"] == "1"
+    assert payload["schema_version"] == "2"
     assert Path(payload["database_path"]) == tmp_path / "env" / "recordtree.sqlite3"
     assert (tmp_path / "env" / "recordtree.sqlite3").exists()
 
@@ -436,6 +436,7 @@ async def test_download_history_detail_items_and_job_list_endpoints(
         detail = (await client.get(f"/api/downloads/{download_id}")).json()
         assert detail["id"] == download_id
         assert detail["actor"] == "API Actor"
+        assert "request_json" in detail
 
         items = (await client.get(f"/api/downloads/{download_id}/items")).json()
         assert len(items) == 1
@@ -447,6 +448,94 @@ async def test_download_history_detail_items_and_job_list_endpoints(
 
         missing = await client.get("/api/downloads/999/items")
         assert missing.status_code == 404
+
+
+async def test_resume_download_reuses_persisted_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    group_id = _setup_record(tmp_path, monkeypatch)
+    monkeypatch.setattr("recordtree.mega.resolve_executable", lambda configured: configured)
+    monkeypatch.setattr(
+        "recordtree.mega.check_login",
+        lambda _whoami: MegaLoginStatus(True, 0, "Account: test"),
+    )
+    calls: list[Path] = []
+
+    def fake_download(
+        _mega_get: str,
+        _url: str,
+        output_dir: Path,
+        output_callback=None,
+    ) -> MegaCommandResult:
+        calls.append(output_dir)
+        return MegaCommandResult(1, "partial", "failed")
+
+    monkeypatch.setattr("recordtree.mega.download_link", fake_download)
+
+    async with _test_client() as client:
+        first = await client.post(
+            "/api/downloads",
+            json={
+                "record_id_or_key": str(group_id),
+                "types": "m4a",
+                "include_par2": False,
+                "only_undownloaded": True,
+                "output": str(tmp_path / "custom-download"),
+            },
+        )
+        first_job = await _wait_for_job(client, first.json()["job_id"])
+        assert first_job["status"] == "failed"
+        first_download_id = first_job["result"]["download_id"]
+        first_output = Path(first_job["result"]["output_dir"])
+
+        resumed = await client.post(f"/api/downloads/{first_download_id}/resume")
+        resumed_job = await _wait_for_job(client, resumed.json()["job_id"])
+
+    assert resumed_job["status"] == "failed"
+    assert Path(resumed_job["result"]["output_dir"]) == first_output
+    assert calls == [first_output, first_output]
+
+
+async def test_init_marks_stale_downloads_interrupted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    group_id = _setup_record(tmp_path, monkeypatch)
+    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    try:
+        link_id = int(conn.execute("SELECT id FROM download_links LIMIT 1").fetchone()[0])
+        cursor = conn.execute(
+            f"""
+            INSERT INTO downloads (
+                record_group_id, requested_at, output_dir, selected_bytes,
+                free_bytes_before, status, mega_exit_code, message
+            )
+            VALUES (?, {utc_now_sql()}, ?, 100, NULL, 'planned', NULL, NULL)
+            """,
+            (group_id, str(tmp_path / "downloads" / str(group_id))),
+        )
+        conn.execute(
+            f"""
+            INSERT INTO download_items (
+                download_id, link_id, status, started_at, finished_at, mega_exit_code, message
+            )
+            VALUES (?, ?, 'running', {utc_now_sql()}, NULL, NULL, NULL)
+            """,
+            (int(cursor.lastrowid), link_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    RecordTreeApp().init()
+
+    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    try:
+        assert conn.execute("SELECT status FROM downloads ORDER BY id DESC LIMIT 1").fetchone()[0] == "interrupted"
+        assert conn.execute("SELECT status FROM download_items ORDER BY id DESC LIMIT 1").fetchone()[0] == "interrupted"
+    finally:
+        conn.close()
 
 
 async def test_actor_download_job_runs_selected_undownloaded_records(

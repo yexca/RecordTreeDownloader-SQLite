@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from collections.abc import Callable
 from dataclasses import replace
+import json
 import os
 from pathlib import Path
 
@@ -58,6 +59,8 @@ class RecordTreeApp:
         conn = db.connect(app_config.database_path)
         try:
             db.initialize_schema(conn)
+            DownloadRepository(conn).mark_interrupted_downloads(_interrupted_message())
+            conn.commit()
             schema_version = conn.execute(
                 "SELECT value FROM schema_meta WHERE key = 'schema_version'"
             ).fetchone()
@@ -502,6 +505,14 @@ class RecordTreeApp:
     ) -> DownloadExecutionResult:
         app_config = config_module.load_config(Path("env/config.toml"))
         plan = self.build_download_plan(record_id_or_key, include_par2, types, output, only_undownloaded)
+        request_json = _download_request_json(
+            kind="record",
+            record_id_or_key=record_id_or_key,
+            include_par2=include_par2,
+            types=types,
+            output=plan.output_dir,
+            only_undownloaded=only_undownloaded,
+        )
         conn = self._open_app_db()
         downloads = DownloadRepository(conn)
         try:
@@ -509,7 +520,7 @@ class RecordTreeApp:
                 mega_whoami = mega.resolve_executable(app_config.mega_whoami)
                 mega_get = mega.resolve_executable(app_config.mega_get)
             except ExternalToolError as error:
-                download_id = downloads.create_from_plan(plan, "blocked", str(error))
+                download_id = downloads.create_from_plan(plan, "blocked", str(error), request_json=request_json)
                 conn.commit()
                 return DownloadExecutionResult(
                     download_id=download_id,
@@ -524,7 +535,7 @@ class RecordTreeApp:
             login = mega.check_login(mega_whoami)
             if not login.logged_in:
                 message = "MEGA is not logged in. Use Settings or run mega-login."
-                download_id = downloads.create_from_plan(plan, "blocked", message)
+                download_id = downloads.create_from_plan(plan, "blocked", message, request_json=request_json)
                 conn.commit()
                 return DownloadExecutionResult(
                     download_id=download_id,
@@ -541,7 +552,7 @@ class RecordTreeApp:
                     f"Insufficient disk space: required={plan.required_bytes} "
                     f"free={plan.free_bytes_before}"
                 )
-                download_id = downloads.create_from_plan(plan, "blocked", message)
+                download_id = downloads.create_from_plan(plan, "blocked", message, request_json=request_json)
                 conn.commit()
                 return DownloadExecutionResult(
                     download_id=download_id,
@@ -554,7 +565,12 @@ class RecordTreeApp:
                 )
 
             if not assume_yes and confirm_callback is not None and not confirm_callback(plan):
-                download_id = downloads.create_from_plan(plan, "cancelled", "Cancelled by user.")
+                download_id = downloads.create_from_plan(
+                    plan,
+                    "cancelled",
+                    "Cancelled by user.",
+                    request_json=request_json,
+                )
                 conn.commit()
                 return DownloadExecutionResult(
                     download_id=download_id,
@@ -567,7 +583,7 @@ class RecordTreeApp:
                 )
 
             plan.output_dir.mkdir(parents=True, exist_ok=True)
-            download_id = downloads.create_from_plan(plan, "planned")
+            download_id = downloads.create_from_plan(plan, "planned", request_json=request_json)
             completed = 0
             failed = 0
             last_exit_code: int | None = None
@@ -614,6 +630,15 @@ class RecordTreeApp:
         finally:
             conn.close()
 
+    def mark_interrupted_downloads(self) -> int:
+        conn = self._open_app_db()
+        try:
+            changed = DownloadRepository(conn).mark_interrupted_downloads(_interrupted_message())
+            conn.commit()
+            return changed
+        finally:
+            conn.close()
+
     def list_downloads(
         self,
         page: int = 1,
@@ -652,6 +677,27 @@ class RecordTreeApp:
             return result
         finally:
             conn.close()
+
+    def get_download_resume_request(self, download_id: int) -> dict[str, object]:
+        detail = self.get_download(download_id)
+        if not detail.request_json:
+            raise ValidationError(f"Download {download_id} does not have resumable request metadata.")
+        try:
+            payload = json.loads(detail.request_json)
+        except json.JSONDecodeError as error:
+            raise ValidationError(f"Download {download_id} has invalid request metadata.") from error
+        if not isinstance(payload, dict) or payload.get("kind") != "record":
+            raise ValidationError(f"Download {download_id} cannot be resumed from this request type.")
+        record_id_or_key = payload.get("record_id_or_key")
+        if not isinstance(record_id_or_key, str) or not record_id_or_key.strip():
+            raise ValidationError(f"Download {download_id} has invalid resume target.")
+        return {
+            "record_id_or_key": record_id_or_key,
+            "include_par2": bool(payload.get("include_par2", False)),
+            "types": payload.get("types") if isinstance(payload.get("types"), str) else None,
+            "output": payload.get("output") if isinstance(payload.get("output"), str) else None,
+            "only_undownloaded": bool(payload.get("only_undownloaded", True)),
+        }
 
     def list_download_items(self, download_id: int) -> list[DownloadItemDetail]:
         if download_id < 1:
@@ -936,6 +982,33 @@ def _megacmd_persistence_dir() -> Path:
     if os.name != "nt" and home == Path("/root"):
         return home
     return home / ".megaCmd"
+
+
+def _download_request_json(
+    *,
+    kind: str,
+    record_id_or_key: str,
+    include_par2: bool,
+    types: str | None,
+    output: Path,
+    only_undownloaded: bool,
+) -> str:
+    return json.dumps(
+        {
+            "kind": kind,
+            "record_id_or_key": record_id_or_key,
+            "include_par2": include_par2,
+            "types": types,
+            "output": str(output),
+            "only_undownloaded": only_undownloaded,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+
+def _interrupted_message() -> str:
+    return "Interrupted by application startup recovery; resume to continue the same MEGAcmd download."
 
 
 def _command_message(stdout: str, stderr: str) -> str | None:

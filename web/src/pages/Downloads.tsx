@@ -11,7 +11,7 @@ import {
   Title,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconAlertCircle, IconExternalLink, IconRefresh } from '@tabler/icons-react';
+import { IconAlertCircle, IconExternalLink, IconPlayerPlay, IconRefresh } from '@tabler/icons-react';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type { DownloadItemDetail, DownloadPage, Job } from '../api/types';
@@ -32,6 +32,8 @@ function jobTarget(job: Job) {
   return 'Download job';
 }
 
+const RESUMABLE_STATUSES = new Set(['interrupted', 'failed', 'cancelled', 'blocked']);
+
 export default function Downloads() {
   const [activeJobs, setActiveJobs] = useState<Job[]>([]);
   const [history, setHistory] = useState<DownloadPage | null>(null);
@@ -39,6 +41,7 @@ export default function Downloads() {
   const [selectedDownloadId, setSelectedDownloadId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  const [resumingId, setResumingId] = useState<number | null>(null);
 
   const selectedDownload = useMemo(
     () => history?.items.find((item) => item.id === selectedDownloadId) ?? null,
@@ -108,6 +111,28 @@ export default function Downloads() {
   const refreshAll = () => {
     loadActiveJobs();
     loadHistory();
+  };
+
+  const resumeDownload = async (downloadId: number) => {
+    setResumingId(downloadId);
+    try {
+      const created = await api.resumeDownload(downloadId);
+      notifications.show({
+        color: 'teal',
+        title: 'Resume queued',
+        message: `Job ${created.job_id}`,
+      });
+      await loadActiveJobs();
+      await loadHistory();
+    } catch (err) {
+      notifications.show({
+        color: 'red',
+        title: 'Resume unavailable',
+        message: err instanceof Error ? err.message : 'Unknown error',
+      });
+    } finally {
+      setResumingId(null);
+    }
   };
 
   return (
@@ -260,6 +285,14 @@ export default function Downloads() {
             >
               Open record
             </Button>
+            <Button
+              leftSection={<IconPlayerPlay size={16} />}
+              disabled={!RESUMABLE_STATUSES.has(selectedDownload.status) || !selectedDownload.request_json}
+              loading={resumingId === selectedDownload.id}
+              onClick={() => resumeDownload(selectedDownload.id)}
+            >
+              Resume
+            </Button>
           </Group>
           <SimpleGrid cols={{ base: 2, md: 4 }}>
             <Text size="sm">Source: {selectedDownload.source}</Text>
@@ -267,6 +300,17 @@ export default function Downloads() {
             <Text size="sm">Free before: {formatBytes(selectedDownload.free_bytes_before)}</Text>
             <Text size="sm">Failures: {selectedDownload.failed_count}</Text>
           </SimpleGrid>
+          {selectedDownload.request_json && (
+            <Textarea
+              label="Request"
+              autosize
+              minRows={2}
+              maxRows={6}
+              readOnly
+              className="log-output"
+              value={selectedDownload.request_json}
+            />
+          )}
           {items.length === 0 ? (
             <EmptyState message="No download items recorded for this entry." />
           ) : (

@@ -19,16 +19,26 @@ def connect(database_path: Path) -> sqlite3.Connection:
 def initialize_schema(conn: sqlite3.Connection) -> None:
     schema = files("recordtree").joinpath("schema.sql").read_text(encoding="utf-8")
     conn.executescript(schema)
+    _migrate_schema(conn)
     conn.execute(
         """
         INSERT INTO schema_meta (key, value, updated_at)
-        VALUES ('schema_version', '1', datetime('now'))
+        VALUES ('schema_version', '2', datetime('now'))
         ON CONFLICT(key) DO UPDATE SET
             value = excluded.value,
             updated_at = excluded.updated_at
         """
     )
     conn.commit()
+
+
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    download_columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(downloads)").fetchall()
+    }
+    if "request_json" not in download_columns:
+        conn.execute("ALTER TABLE downloads ADD COLUMN request_json TEXT")
 
 
 @contextmanager

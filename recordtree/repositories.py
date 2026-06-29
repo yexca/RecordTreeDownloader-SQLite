@@ -430,14 +430,15 @@ class DownloadRepository:
         free_bytes_before: int | None,
         status: str,
         message: str | None = None,
+        request_json: str | None = None,
     ) -> int:
         cursor = self.conn.execute(
             f"""
             INSERT INTO downloads (
                 record_group_id, requested_at, output_dir, selected_bytes,
-                free_bytes_before, status, mega_exit_code, message
+                free_bytes_before, status, mega_exit_code, message, request_json
             )
-            VALUES (?, {utc_now_sql()}, ?, ?, ?, ?, NULL, ?)
+            VALUES (?, {utc_now_sql()}, ?, ?, ?, ?, NULL, ?, ?)
             """,
             (
                 record_group_id,
@@ -446,6 +447,7 @@ class DownloadRepository:
                 free_bytes_before,
                 status,
                 message,
+                request_json,
             ),
         )
         return int(cursor.lastrowid)
@@ -505,7 +507,13 @@ class DownloadRepository:
             (status, mega_exit_code, message, item_id),
         )
 
-    def create_from_plan(self, plan: DownloadPlan, status: str, message: str | None = None) -> int:
+    def create_from_plan(
+        self,
+        plan: DownloadPlan,
+        status: str,
+        message: str | None = None,
+        request_json: str | None = None,
+    ) -> int:
         return self.create_download(
             record_group_id=plan.record_group_id,
             output_dir=plan.output_dir,
@@ -513,7 +521,42 @@ class DownloadRepository:
             free_bytes_before=plan.free_bytes_before,
             status=status,
             message=message,
+            request_json=request_json,
         )
+
+    def mark_interrupted_downloads(self, message: str) -> int:
+        cursor = self.conn.execute(
+            """
+            UPDATE downloads
+            SET status = 'interrupted',
+                message = CASE
+                    WHEN message IS NULL OR message = '' THEN ?
+                    ELSE message || char(10) || ?
+                END
+            WHERE status IN ('planned', 'queued', 'running')
+            """,
+            (message, message),
+        )
+        self.conn.execute(
+            f"""
+            UPDATE download_items
+            SET status = 'interrupted',
+                finished_at = {utc_now_sql()},
+                message = CASE
+                    WHEN message IS NULL OR message = '' THEN ?
+                    ELSE message || char(10) || ?
+                END
+            WHERE status IN ('planned', 'queued', 'running')
+              AND EXISTS (
+                  SELECT 1
+                  FROM downloads d
+                  WHERE d.id = download_items.download_id
+                    AND d.status = 'interrupted'
+              )
+            """,
+            (message, message),
+        )
+        return int(cursor.rowcount)
 
     def count_downloads(self, status: str | None = None, record_id: int | None = None) -> int:
         where_sql, params = _download_filters(status, record_id)
@@ -714,6 +757,7 @@ def _download_detail(row: sqlite3.Row) -> DownloadDetail:
         status=row["status"],
         mega_exit_code=row["mega_exit_code"],
         message=row["message"],
+        request_json=row["request_json"],
         item_count=int(row["item_count"] or 0),
         completed_count=int(row["completed_count"] or 0),
         failed_count=int(row["failed_count"] or 0),

@@ -117,6 +117,10 @@ export const api = {
   download: (downloadId: number) => request<DownloadDetail>(`/api/downloads/${downloadId}`),
   downloadItems: (downloadId: number) =>
     request<DownloadItemDetail[]>(`/api/downloads/${downloadId}/items`),
+  resumeDownload: (downloadId: number) =>
+    request<JobCreateResponse>(`/api/downloads/${downloadId}/resume`, {
+      method: 'POST',
+    }),
   createImport: async (file: File) => {
     const body = new FormData();
     body.append('file', file);

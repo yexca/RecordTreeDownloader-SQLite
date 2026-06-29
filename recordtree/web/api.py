@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import shutil
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -18,7 +19,17 @@ from .serializers import to_json_safe
 from .jobs import JobManager
 
 
-app = FastAPI(title="RecordTreeDownloader API")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        RecordTreeApp().mark_interrupted_downloads()
+    except RecordTreeError:
+        pass
+    yield
+
+
+app = FastAPI(title="RecordTreeDownloader API", lifespan=lifespan)
 job_manager = JobManager()
 UPLOAD_DIR = Path("files/uploads")
 ALLOWED_IMPORT_EXTENSIONS = {".xlsx", ".xlsm", ".json", ".db", ".sqlite", ".sqlite3"}
@@ -123,6 +134,13 @@ def create_download(request: DownloadRequest) -> dict[str, object]:
 @app.post("/api/downloads/actor")
 def create_actor_download(request: ActorDownloadRequest) -> dict[str, object]:
     job = job_manager.start_actor_download(request)
+    return {"job_id": job.id, "status": job.status}
+
+
+@app.post("/api/downloads/{download_id}/resume")
+def resume_download(download_id: int) -> dict[str, object]:
+    request = DownloadRequest(**RecordTreeApp().get_download_resume_request(download_id))
+    job = job_manager.start_download(request)
     return {"job_id": job.id, "status": job.status}
 
 

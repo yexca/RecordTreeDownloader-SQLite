@@ -233,6 +233,7 @@ class DownloadDetail:
     status: str
     mega_exit_code: int | None
     message: str | None
+    request_json: str | None
     item_count: int
     completed_count: int
     failed_count: int

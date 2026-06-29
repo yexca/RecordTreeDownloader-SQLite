@@ -49,8 +49,8 @@ def test_init_creates_paths_and_is_idempotent(tmp_path: Path, monkeypatch) -> No
     assert first.database_path == tmp_path / "env" / "recordtree.sqlite3"
     assert first.downloads_dir == tmp_path / "downloads"
     assert first.logs_dir == tmp_path / "logs"
-    assert first.schema_version == "1"
-    assert second.schema_version == "1"
+    assert first.schema_version == "2"
+    assert second.schema_version == "2"
     assert first.config_path.read_text(encoding="utf-8") == config_text
     assert first.database_path.exists()
     assert first.downloads_dir.is_dir()
@@ -84,7 +84,7 @@ def test_init_schema_tables_indexes_and_foreign_keys(tmp_path: Path, monkeypatch
 
     assert EXPECTED_TABLES <= tables
     assert EXPECTED_INDEXES <= indexes
-    assert schema_version["value"] == "1"
+    assert schema_version["value"] == "2"
     assert foreign_keys == 1
 
 
