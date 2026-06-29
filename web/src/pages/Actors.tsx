@@ -200,7 +200,7 @@ export default function Actors() {
                           {actor.name}
                         </Text>
                         <Text size="xs" c="dimmed">
-                          ID {actor.id} · {actor.record_count} records
+                          ID {actor.id} | {actor.record_count} records
                         </Text>
                       </span>
                       <Badge variant="light" color={actor.undownloaded_count > 0 ? 'yellow' : 'teal'} size="sm">
@@ -259,8 +259,6 @@ export default function Actors() {
                 Choose an actor from the directory to review records and download coverage.
               </Text>
             </Stack>
-          ) : selectedRecordId ? (
-            <RecordDetail idOrKey={String(selectedRecordId)} onBack={() => setSelectedRecordId(null)} />
           ) : (
             <>
               <Group className="section actor-summary" justify="space-between" align="start" wrap="nowrap">
@@ -288,25 +286,29 @@ export default function Actors() {
                 </ActionIcon>
               </Group>
 
-              <Stack p="md" className="section" gap="md">
-                <Group justify="space-between" align="center">
-                  <Title order={3} size="h4">
-                    Records
-                  </Title>
-                  <Text size="xs" c="dimmed">
-                    Sorted by delivery date
-                  </Text>
-                </Group>
-                {recordError ? (
-                  <ErrorBlock message={recordError} />
-                ) : loadingRecords ? (
-                  <LoadingBlock />
-                ) : records.length === 0 ? (
-                  <EmptyState message="No records found for this actor." />
-                ) : (
-                  <RecordTable records={records} onOpen={setSelectedRecordId} />
-                )}
-              </Stack>
+              {selectedRecordId ? (
+                <RecordDetail idOrKey={String(selectedRecordId)} onBack={() => setSelectedRecordId(null)} />
+              ) : (
+                <Stack p="md" className="section" gap="md">
+                  <Group justify="space-between" align="center">
+                    <Title order={3} size="h4">
+                      Records
+                    </Title>
+                    <Text size="xs" c="dimmed">
+                      Sorted by delivery date
+                    </Text>
+                  </Group>
+                  {recordError ? (
+                    <ErrorBlock message={recordError} />
+                  ) : loadingRecords ? (
+                    <LoadingBlock />
+                  ) : records.length === 0 ? (
+                    <EmptyState message="No records found for this actor." />
+                  ) : (
+                    <RecordTable records={records} onOpen={setSelectedRecordId} />
+                  )}
+                </Stack>
+              )}
             </>
           )}
         </Stack>

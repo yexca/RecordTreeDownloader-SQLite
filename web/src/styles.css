@@ -86,6 +86,8 @@ body {
 .actor-directory {
   min-width: 0;
   overflow: hidden;
+  position: sticky;
+  top: 72px;
 }
 
 .actor-directory-toolbar {
@@ -176,5 +178,9 @@ body {
 
   .actors-layout {
     grid-template-columns: 1fr;
+  }
+
+  .actor-directory {
+    position: static;
   }
 }
