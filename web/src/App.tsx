@@ -108,7 +108,7 @@ export default function App() {
         <Group h="100%" px="md" justify="space-between" wrap="nowrap">
           <Group wrap="nowrap">
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-            <IconDatabase size={24} color="#0f766e" />
+            <IconDatabase size={24} className="brand-icon" />
             <Text className="app-title">RecordTree WebUI</Text>
           </Group>
           <Tooltip label="Toggle color scheme">

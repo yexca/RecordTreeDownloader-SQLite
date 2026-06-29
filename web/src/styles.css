@@ -1,11 +1,35 @@
 :root {
+  --rt-bg: #f6f7f8;
+  --rt-surface: #ffffff;
+  --rt-border: #dde3e1;
+  --rt-hover: #f0f7f5;
+  --rt-selected: #e5f4f0;
+  --rt-list-selected: #dff1ec;
+  --rt-title: #17201d;
+  --rt-brand: #0f766e;
+  background: var(--rt-bg);
+}
+
+:root[data-mantine-color-scheme='light'] {
   color-scheme: light;
-  background: #f6f7f8;
+}
+
+:root[data-mantine-color-scheme='dark'] {
+  color-scheme: dark;
+  --rt-bg: var(--mantine-color-dark-8);
+  --rt-surface: var(--mantine-color-dark-7);
+  --rt-border: var(--mantine-color-dark-5);
+  --rt-hover: rgba(45, 212, 191, 0.1);
+  --rt-selected: rgba(45, 212, 191, 0.16);
+  --rt-list-selected: rgba(45, 212, 191, 0.18);
+  --rt-title: var(--mantine-color-dark-0);
+  --rt-brand: var(--mantine-color-teal-4);
 }
 
 body {
   margin: 0;
-  background: #f6f7f8;
+  background: var(--rt-bg);
+  color: var(--mantine-color-text);
   font-family:
     Inter,
     "Noto Sans JP",
@@ -17,6 +41,10 @@ body {
     "Microsoft YaHei UI",
     system-ui,
     sans-serif;
+}
+
+.mantine-AppShell-main {
+  background: var(--rt-bg);
 }
 
 .table-scroll {
@@ -41,16 +69,20 @@ body {
 }
 
 .app-title {
-  color: #17201d;
+  color: var(--rt-title);
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 0;
 }
 
+.brand-icon {
+  color: var(--rt-brand);
+}
+
 .section {
-  border: 1px solid #dde3e1;
+  border: 1px solid var(--rt-border);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--rt-surface);
 }
 
 .click-row {
@@ -58,11 +90,11 @@ body {
 }
 
 .click-row:hover {
-  background: #f0f7f5;
+  background: var(--rt-hover);
 }
 
 .click-row[data-selected='true'] {
-  background: #e5f4f0;
+  background: var(--rt-selected);
 }
 
 .split-layout {
@@ -91,7 +123,7 @@ body {
 }
 
 .actor-directory-toolbar {
-  border-bottom: 1px solid #dde3e1;
+  border-bottom: 1px solid var(--rt-border);
 }
 
 .actor-directory-body {
@@ -99,7 +131,7 @@ body {
 }
 
 .actor-directory-footer {
-  border-top: 1px solid #dde3e1;
+  border-top: 1px solid var(--rt-border);
   padding: 10px 12px;
 }
 
@@ -176,11 +208,11 @@ body {
 }
 
 .actor-list-item:hover {
-  background: #f0f7f5;
+  background: var(--rt-hover);
 }
 
 .actor-list-item[data-selected='true'] {
-  background: #dff1ec;
+  background: var(--rt-list-selected);
 }
 
 .actor-list-main {
