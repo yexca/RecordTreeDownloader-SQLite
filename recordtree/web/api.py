@@ -4,7 +4,7 @@ import re
 import shutil
 import uuid
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import FastAPI, File, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -70,6 +70,50 @@ def create_import(file: Annotated[UploadFile, File()]) -> dict[str, object]:
     return {"job_id": job.id, "status": job.status}
 
 
+@app.get("/api/imports")
+def imports(
+    status: str | None = None,
+    source_type: str | None = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> dict[str, object]:
+    return _serialize(
+        RecordTreeApp().list_imports(
+            page=page,
+            page_size=page_size,
+            status=status,
+            source_type=source_type,
+        )
+    )
+
+
+@app.get("/api/imports/{import_id}")
+def import_detail(import_id: int) -> dict[str, object]:
+    return _serialize(RecordTreeApp().get_import(import_id))
+
+
+@app.get("/api/imports/{import_id}/errors")
+def import_errors(import_id: int, page: int = 1, page_size: int = 100) -> dict[str, object]:
+    return _serialize(RecordTreeApp().list_import_errors(import_id, page=page, page_size=page_size))
+
+
+@app.get("/api/downloads")
+def downloads(
+    status: str | None = None,
+    record_id: int | None = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> dict[str, object]:
+    return _serialize(
+        RecordTreeApp().list_downloads(
+            page=page,
+            page_size=page_size,
+            status=status,
+            record_id=record_id,
+        )
+    )
+
+
 @app.post("/api/downloads")
 def create_download(request: DownloadRequest) -> dict[str, object]:
     job = job_manager.start_download(request)
@@ -80,6 +124,21 @@ def create_download(request: DownloadRequest) -> dict[str, object]:
 def create_actor_download(request: ActorDownloadRequest) -> dict[str, object]:
     job = job_manager.start_actor_download(request)
     return {"job_id": job.id, "status": job.status}
+
+
+@app.get("/api/downloads/{download_id}")
+def download_detail(download_id: int) -> dict[str, object]:
+    return _serialize(RecordTreeApp().get_download(download_id))
+
+
+@app.get("/api/downloads/{download_id}/items")
+def download_items(download_id: int) -> list[dict[str, object]]:
+    return _serialize(RecordTreeApp().list_download_items(download_id))
+
+
+@app.get("/api/jobs")
+def jobs(kind: Literal["import", "download"] | None = None, active: bool | None = None) -> list[dict[str, object]]:
+    return _serialize([job_manager.serialize(job) for job in job_manager.list(kind=kind, active=active)])
 
 
 @app.get("/api/jobs/{job_id}")

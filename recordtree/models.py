@@ -159,6 +159,57 @@ class ImportSummary:
 
 
 @dataclass(frozen=True)
+class ImportDetail:
+    id: int
+    source_type: str
+    source_path: str
+    source_file_name: str
+    source_file_size: int | None
+    started_at: str
+    finished_at: str | None
+    status: str
+    total_rows: int
+    inserted_groups: int
+    updated_groups: int
+    skipped_groups: int
+    link_sets_changed: int
+    inserted_links: int
+    skipped_links: int
+    error_count: int
+    notes: str | None
+
+
+@dataclass(frozen=True)
+class ImportErrorSummary:
+    id: int
+    import_id: int
+    row_number: int | None
+    source_key: str | None
+    error_type: str
+    message: str
+    raw_value: str | None
+    created_at: str
+
+
+@dataclass(frozen=True)
+class ImportPage:
+    items: list[ImportDetail]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+@dataclass(frozen=True)
+class ImportErrorPage:
+    items: list[ImportErrorSummary]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+@dataclass(frozen=True)
 class DownloadSummary:
     id: int
     record_group_id: int
@@ -166,6 +217,51 @@ class DownloadSummary:
     status: str
     selected_bytes: int
     message: str | None
+
+
+@dataclass(frozen=True)
+class DownloadDetail:
+    id: int
+    record_group_id: int
+    record_title: str
+    actor: str
+    source: str
+    requested_at: str
+    output_dir: str
+    selected_bytes: int
+    free_bytes_before: int | None
+    status: str
+    mega_exit_code: int | None
+    message: str | None
+    item_count: int
+    completed_count: int
+    failed_count: int
+
+
+@dataclass(frozen=True)
+class DownloadItemDetail:
+    id: int
+    download_id: int
+    link_id: int
+    link_order: int
+    mega_url: str
+    file_type: str | None
+    size_bytes: int
+    formatted_size: str | None
+    status: str
+    started_at: str | None
+    finished_at: str | None
+    mega_exit_code: int | None
+    message: str | None
+
+
+@dataclass(frozen=True)
+class DownloadPage:
+    items: list[DownloadDetail]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
 
 
 @dataclass(frozen=True)

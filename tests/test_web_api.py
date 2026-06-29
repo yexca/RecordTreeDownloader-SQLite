@@ -295,6 +295,44 @@ async def test_import_upload_rejects_unsupported_extension_before_saving(
     assert not (tmp_path / "files" / "uploads").exists()
 
 
+async def test_import_history_detail_and_errors_endpoints(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    RecordTreeApp().init()
+    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    try:
+        source = tmp_path / "history.xlsx"
+        source.write_bytes(b"xlsx")
+        repo = ImportRepository(conn)
+        import_id = repo.create_import("xlsx", source)
+        repo.add_import_error(import_id, 7, "source-key", "BadRow", "broken row", "{bad}")
+        repo.fail_import(import_id, "failed for test")
+        conn.commit()
+    finally:
+        conn.close()
+
+    async with _test_client() as client:
+        page = (await client.get("/api/imports", params={"source_type": "xlsx"})).json()
+        assert page["total"] == 1
+        assert page["items"][0]["id"] == import_id
+        assert page["items"][0]["source_file_name"] == "history.xlsx"
+        assert page["items"][0]["status"] == "failed"
+
+        detail = (await client.get(f"/api/imports/{import_id}")).json()
+        assert detail["id"] == import_id
+        assert detail["notes"] == "failed for test"
+
+        errors = (await client.get(f"/api/imports/{import_id}/errors")).json()
+        assert errors["total"] == 1
+        assert errors["items"][0]["row_number"] == 7
+        assert errors["items"][0]["error_type"] == "BadRow"
+
+        missing = await client.get("/api/imports/999/errors")
+        assert missing.status_code == 404
+
+
 async def test_import_job_reports_failed_status_for_bad_source(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -366,6 +404,49 @@ async def test_download_job_records_output_chunks(
         events = await client.get(f"/api/jobs/{response.json()['job_id']}/events")
         assert "event: output" in events.text
         assert "100%" in events.text
+
+
+async def test_download_history_detail_items_and_job_list_endpoints(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    group_id = _setup_record(tmp_path, monkeypatch)
+    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    try:
+        link_id = int(
+            conn.execute(
+                "SELECT id FROM download_links WHERE mega_url = ?",
+                ("https://example.invalid/api/2",),
+            ).fetchone()[0]
+        )
+        _insert_download(conn, group_id, link_id, "failed")
+        download_id = int(conn.execute("SELECT MAX(id) FROM downloads").fetchone()[0])
+        conn.commit()
+    finally:
+        conn.close()
+
+    async with _test_client() as client:
+        page = (await client.get("/api/downloads", params={"status": "failed"})).json()
+        assert page["total"] == 1
+        assert page["items"][0]["id"] == download_id
+        assert page["items"][0]["record_group_id"] == group_id
+        assert page["items"][0]["record_title"] == "API ASMR title"
+        assert page["items"][0]["failed_count"] == 1
+
+        detail = (await client.get(f"/api/downloads/{download_id}")).json()
+        assert detail["id"] == download_id
+        assert detail["actor"] == "API Actor"
+
+        items = (await client.get(f"/api/downloads/{download_id}/items")).json()
+        assert len(items) == 1
+        assert items[0]["link_id"] == link_id
+        assert items[0]["status"] == "failed"
+
+        jobs = (await client.get("/api/jobs", params={"kind": "download", "active": True})).json()
+        assert isinstance(jobs, list)
+
+        missing = await client.get("/api/downloads/999/items")
+        assert missing.status_code == 404
 
 
 async def test_actor_download_job_runs_selected_undownloaded_records(

@@ -3,6 +3,7 @@ import {
   Button,
   Group,
   List,
+  Pagination,
   Progress,
   SimpleGrid,
   Stack,
@@ -12,11 +13,13 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconAlertCircle, IconFileImport, IconUpload } from '@tabler/icons-react';
+import { IconAlertCircle, IconFileImport, IconRefresh, IconUpload } from '@tabler/icons-react';
 import { DragEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { ImportJob, ImportResult, Job, JobProgress } from '../api/types';
+import type { ImportErrorPage, ImportJob, ImportPage, ImportResult, Job, JobProgress } from '../api/types';
+import { EmptyState } from '../components/EmptyState';
 import { PlainStatusBadge } from '../components/StatusBadge';
+import { formatBytes, formatText } from '../components/format';
 
 const ACCEPTED_EXTENSIONS = ['.xlsx', '.xlsm', '.json', '.db', '.sqlite', '.sqlite3'];
 
@@ -86,6 +89,11 @@ export default function ImportPage() {
   const [uploading, setUploading] = useState(false);
   const [job, setJob] = useState<ImportJob | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<ImportPage | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [selectedImportId, setSelectedImportId] = useState<number | null>(null);
+  const [importErrors, setImportErrors] = useState<ImportErrorPage | null>(null);
   const timerRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -106,6 +114,25 @@ export default function ImportPage() {
     };
   }, [job?.id, job?.status]);
 
+  const loadHistory = async (page = historyPage) => {
+    try {
+      setHistoryError(null);
+      setHistory(await api.imports({ page, page_size: 10 }));
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : 'Import history failed to load');
+    }
+  };
+
+  useEffect(() => {
+    loadHistory(historyPage);
+  }, [historyPage]);
+
+  useEffect(() => {
+    if (job?.status === 'completed' || job?.status === 'failed') {
+      loadHistory(historyPage);
+    }
+  }, [job?.status]);
+
   const startImport = async () => {
     if (!file || !canUpload) return;
     setUploading(true);
@@ -114,6 +141,7 @@ export default function ImportPage() {
       const created = await api.createImport(file);
       const next = await api.job(created.job_id);
       setJob(asImportJob(next));
+      loadHistory(1);
       notifications.show({ color: 'teal', title: 'Import queued', message: file.name });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed');
@@ -129,6 +157,24 @@ export default function ImportPage() {
   const dropFile = (event: DragEvent<HTMLButtonElement>) => {
     event.preventDefault();
     pickFile(event.dataTransfer.files);
+  };
+
+  const openImportErrors = async (importId: number) => {
+    if (selectedImportId === importId) {
+      setSelectedImportId(null);
+      setImportErrors(null);
+      return;
+    }
+    setSelectedImportId(importId);
+    try {
+      setImportErrors(await api.importErrors(importId, 1, 20));
+    } catch (err) {
+      notifications.show({
+        color: 'red',
+        title: 'Import errors unavailable',
+        message: err instanceof Error ? err.message : 'Unknown error',
+      });
+    }
   };
 
   return (
@@ -225,6 +271,123 @@ export default function ImportPage() {
           </List>
         </Stack>
       )}
+
+      <Stack p="md" className="section" gap="md">
+        <Group justify="space-between" align="end">
+          <div>
+            <Title order={3} size="h4">
+              Import History
+            </Title>
+            <Text size="sm" c="dimmed">
+              Completed and failed imports recorded in SQLite
+            </Text>
+          </div>
+          <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={() => loadHistory()}>
+            Refresh
+          </Button>
+        </Group>
+        {historyError && (
+          <Alert color="red" icon={<IconAlertCircle size={18} />}>
+            {historyError}
+          </Alert>
+        )}
+        {!history ? (
+          <Text size="sm" c="dimmed">
+            Loading history...
+          </Text>
+        ) : history.items.length === 0 ? (
+          <EmptyState message="No imports recorded yet." />
+        ) : (
+          <>
+            <div className="table-scroll">
+              <Table striped highlightOnHover withTableBorder verticalSpacing={6} fz="sm">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>ID</Table.Th>
+                    <Table.Th>File</Table.Th>
+                    <Table.Th>Type</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                    <Table.Th>Rows</Table.Th>
+                    <Table.Th>Errors</Table.Th>
+                    <Table.Th>Inserted</Table.Th>
+                    <Table.Th>Updated</Table.Th>
+                    <Table.Th>Started</Table.Th>
+                    <Table.Th>Size</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {history.items.map((item) => (
+                    <Table.Tr
+                      key={item.id}
+                      className="click-row"
+                      data-selected={selectedImportId === item.id}
+                      onClick={() => openImportErrors(item.id)}
+                    >
+                      <Table.Td>{item.id}</Table.Td>
+                      <Table.Td className="truncate-cell" title={item.source_path}>
+                        {item.source_file_name}
+                      </Table.Td>
+                      <Table.Td>{item.source_type}</Table.Td>
+                      <Table.Td>
+                        <PlainStatusBadge value={item.status} />
+                      </Table.Td>
+                      <Table.Td>{item.total_rows}</Table.Td>
+                      <Table.Td>{item.error_count}</Table.Td>
+                      <Table.Td>{item.inserted_groups}</Table.Td>
+                      <Table.Td>{item.updated_groups}</Table.Td>
+                      <Table.Td className="nowrap">{item.started_at}</Table.Td>
+                      <Table.Td className="nowrap">{formatBytes(item.source_file_size)}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </div>
+            <Group justify="space-between">
+              <Text size="sm" c="dimmed">
+                {history.total} imports
+              </Text>
+              <Pagination value={historyPage} onChange={setHistoryPage} total={Math.max(1, history.total_pages)} />
+            </Group>
+          </>
+        )}
+        {selectedImportId && (
+          <Stack gap="sm">
+            <Title order={4} size="h5">
+              Import #{selectedImportId} Errors
+            </Title>
+            {!importErrors ? (
+              <Text size="sm" c="dimmed">
+                Loading errors...
+              </Text>
+            ) : importErrors.items.length === 0 ? (
+              <EmptyState message="No row errors recorded for this import." />
+            ) : (
+              <div className="table-scroll">
+                <Table striped withTableBorder verticalSpacing={6} fz="sm">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Row</Table.Th>
+                      <Table.Th>Type</Table.Th>
+                      <Table.Th>Message</Table.Th>
+                      <Table.Th>Raw value</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {importErrors.items.map((item) => (
+                      <Table.Tr key={item.id}>
+                        <Table.Td>{formatText(item.row_number == null ? null : String(item.row_number))}</Table.Td>
+                        <Table.Td>{item.error_type}</Table.Td>
+                        <Table.Td>{item.message}</Table.Td>
+                        <Table.Td className="url-cell">{formatText(item.raw_value)}</Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </div>
+            )}
+          </Stack>
+        )}
+      </Stack>
     </Stack>
   );
 }

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import sqlite3
 
-from .models import DownloadPlan, ImportRecord, ImportStats, LinkItem
+from .models import DownloadDetail, DownloadItemDetail, DownloadPlan, ImportDetail, ImportErrorSummary, ImportRecord, ImportStats, LinkItem
 from .normalizers import build_link_content_hash, clean_text, normalize_search_text
 
 
@@ -106,6 +106,64 @@ class ImportRepository:
             """,
             (import_id,),
         ).fetchall()
+
+    def count_imports(self, status: str | None = None, source_type: str | None = None) -> int:
+        where_sql, params = _import_filters(status, source_type)
+        row = self.conn.execute(f"SELECT COUNT(*) FROM imports {where_sql}", params).fetchone()
+        return int(row[0])
+
+    def list_imports(
+        self,
+        limit: int,
+        offset: int,
+        status: str | None = None,
+        source_type: str | None = None,
+    ) -> list[ImportDetail]:
+        where_sql, params = _import_filters(status, source_type)
+        rows = self.conn.execute(
+            f"""
+            SELECT *
+            FROM imports
+            {where_sql}
+            ORDER BY id DESC
+            LIMIT ? OFFSET ?
+            """,
+            params + (limit, offset),
+        ).fetchall()
+        return [_import_detail(row) for row in rows]
+
+    def get_import(self, import_id: int) -> ImportDetail | None:
+        row = self.conn.execute("SELECT * FROM imports WHERE id = ?", (import_id,)).fetchone()
+        return _import_detail(row) if row is not None else None
+
+    def count_errors(self, import_id: int) -> int:
+        row = self.conn.execute("SELECT COUNT(*) FROM import_errors WHERE import_id = ?", (import_id,)).fetchone()
+        return int(row[0])
+
+    def list_error_details(self, import_id: int, limit: int, offset: int) -> list[ImportErrorSummary]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM import_errors
+            WHERE import_id = ?
+            ORDER BY id
+            LIMIT ? OFFSET ?
+            """,
+            (import_id, limit, offset),
+        ).fetchall()
+        return [
+            ImportErrorSummary(
+                id=int(row["id"]),
+                import_id=int(row["import_id"]),
+                row_number=row["row_number"],
+                source_key=row["source_key"],
+                error_type=row["error_type"],
+                message=row["message"],
+                raw_value=row["raw_value"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]
 
 
 class RecordGroupRepository:
@@ -457,6 +515,84 @@ class DownloadRepository:
             message=message,
         )
 
+    def count_downloads(self, status: str | None = None, record_id: int | None = None) -> int:
+        where_sql, params = _download_filters(status, record_id)
+        row = self.conn.execute(f"SELECT COUNT(*) FROM downloads d {where_sql}", params).fetchone()
+        return int(row[0])
+
+    def list_downloads(
+        self,
+        limit: int,
+        offset: int,
+        status: str | None = None,
+        record_id: int | None = None,
+    ) -> list[DownloadDetail]:
+        where_sql, params = _download_filters(status, record_id)
+        rows = self.conn.execute(
+            f"""
+            SELECT d.*, rg.title AS record_title, rg.actor_raw, rg.source_name,
+                   COUNT(di.id) AS item_count,
+                   COUNT(CASE WHEN di.status IN ('completed', 'legacy_completed') THEN 1 END) AS completed_count,
+                   COUNT(CASE WHEN di.status = 'failed' THEN 1 END) AS failed_count
+            FROM downloads d
+            JOIN record_groups rg ON rg.id = d.record_group_id
+            LEFT JOIN download_items di ON di.download_id = d.id
+            {where_sql}
+            GROUP BY d.id
+            ORDER BY d.id DESC
+            LIMIT ? OFFSET ?
+            """,
+            params + (limit, offset),
+        ).fetchall()
+        return [_download_detail(row) for row in rows]
+
+    def get_download(self, download_id: int) -> DownloadDetail | None:
+        row = self.conn.execute(
+            """
+            SELECT d.*, rg.title AS record_title, rg.actor_raw, rg.source_name,
+                   COUNT(di.id) AS item_count,
+                   COUNT(CASE WHEN di.status IN ('completed', 'legacy_completed') THEN 1 END) AS completed_count,
+                   COUNT(CASE WHEN di.status = 'failed' THEN 1 END) AS failed_count
+            FROM downloads d
+            JOIN record_groups rg ON rg.id = d.record_group_id
+            LEFT JOIN download_items di ON di.download_id = d.id
+            WHERE d.id = ?
+            GROUP BY d.id
+            """,
+            (download_id,),
+        ).fetchone()
+        return _download_detail(row) if row is not None else None
+
+    def list_download_items(self, download_id: int) -> list[DownloadItemDetail]:
+        rows = self.conn.execute(
+            """
+            SELECT di.*, dl.link_order, dl.mega_url, dl.file_type, dl.size_bytes, dl.formatted_size
+            FROM download_items di
+            JOIN download_links dl ON dl.id = di.link_id
+            WHERE di.download_id = ?
+            ORDER BY dl.link_order, di.id
+            """,
+            (download_id,),
+        ).fetchall()
+        return [
+            DownloadItemDetail(
+                id=int(row["id"]),
+                download_id=int(row["download_id"]),
+                link_id=int(row["link_id"]),
+                link_order=int(row["link_order"]),
+                mega_url=row["mega_url"],
+                file_type=row["file_type"],
+                size_bytes=int(row["size_bytes"]),
+                formatted_size=row["formatted_size"],
+                status=row["status"],
+                started_at=row["started_at"],
+                finished_at=row["finished_at"],
+                mega_exit_code=row["mega_exit_code"],
+                message=row["message"],
+            )
+            for row in rows
+        ]
+
 
 class LegacyMigrationRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
@@ -515,4 +651,70 @@ def _record_values(record: ImportRecord, source_key: str) -> tuple[object, ...]:
         record.mega_formatted_size,
         record.mega_json,
         record.source_row_number,
+    )
+
+
+def _import_filters(status: str | None, source_type: str | None) -> tuple[str, tuple[object, ...]]:
+    clauses: list[str] = []
+    params: list[object] = []
+    if status:
+        clauses.append("status = ?")
+        params.append(status)
+    if source_type:
+        clauses.append("source_type = ?")
+        params.append(source_type)
+    return ("WHERE " + " AND ".join(clauses) if clauses else "", tuple(params))
+
+
+def _download_filters(status: str | None, record_id: int | None) -> tuple[str, tuple[object, ...]]:
+    clauses: list[str] = []
+    params: list[object] = []
+    if status:
+        clauses.append("d.status = ?")
+        params.append(status)
+    if record_id is not None:
+        clauses.append("d.record_group_id = ?")
+        params.append(record_id)
+    return ("WHERE " + " AND ".join(clauses) if clauses else "", tuple(params))
+
+
+def _import_detail(row: sqlite3.Row) -> ImportDetail:
+    return ImportDetail(
+        id=int(row["id"]),
+        source_type=row["source_type"],
+        source_path=row["source_path"],
+        source_file_name=row["source_file_name"],
+        source_file_size=row["source_file_size"],
+        started_at=row["started_at"],
+        finished_at=row["finished_at"],
+        status=row["status"],
+        total_rows=int(row["total_rows"] or 0),
+        inserted_groups=int(row["inserted_groups"] or 0),
+        updated_groups=int(row["updated_groups"] or 0),
+        skipped_groups=int(row["skipped_groups"] or 0),
+        link_sets_changed=int(row["link_sets_changed"] or 0),
+        inserted_links=int(row["inserted_links"] or 0),
+        skipped_links=int(row["skipped_links"] or 0),
+        error_count=int(row["error_count"] or 0),
+        notes=row["notes"],
+    )
+
+
+def _download_detail(row: sqlite3.Row) -> DownloadDetail:
+    return DownloadDetail(
+        id=int(row["id"]),
+        record_group_id=int(row["record_group_id"]),
+        record_title=row["record_title"],
+        actor=row["actor_raw"],
+        source=row["source_name"],
+        requested_at=row["requested_at"],
+        output_dir=row["output_dir"],
+        selected_bytes=int(row["selected_bytes"] or 0),
+        free_bytes_before=row["free_bytes_before"],
+        status=row["status"],
+        mega_exit_code=row["mega_exit_code"],
+        message=row["message"],
+        item_count=int(row["item_count"] or 0),
+        completed_count=int(row["completed_count"] or 0),
+        failed_count=int(row["failed_count"] or 0),
     )

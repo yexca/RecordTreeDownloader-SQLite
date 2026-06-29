@@ -2,7 +2,13 @@ import type {
   ActorSummary,
   ApiError,
   DoctorResult,
+  DownloadDetail,
+  DownloadItemDetail,
+  DownloadPage,
   DownloadPlan,
+  ImportDetail,
+  ImportErrorPage,
+  ImportPage,
   Job,
   JobCreateResponse,
   MegaAccountStatus,
@@ -106,6 +112,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  downloads: (query: { status?: string; record_id?: number; page: number; page_size: number }) =>
+    request<DownloadPage>(`/api/downloads${params(query)}`),
+  download: (downloadId: number) => request<DownloadDetail>(`/api/downloads/${downloadId}`),
+  downloadItems: (downloadId: number) =>
+    request<DownloadItemDetail[]>(`/api/downloads/${downloadId}/items`),
   createImport: async (file: File) => {
     const body = new FormData();
     body.append('file', file);
@@ -125,5 +136,12 @@ export const api = {
     }
     return (await response.json()) as JobCreateResponse;
   },
+  imports: (query: { status?: string; source_type?: string; page: number; page_size: number }) =>
+    request<ImportPage>(`/api/imports${params(query)}`),
+  importDetail: (importId: number) => request<ImportDetail>(`/api/imports/${importId}`),
+  importErrors: (importId: number, page: number, pageSize: number) =>
+    request<ImportErrorPage>(`/api/imports/${importId}/errors${params({ page, page_size: pageSize })}`),
+  jobs: (query: { kind?: 'import' | 'download'; active?: boolean }) =>
+    request<Job[]>(`/api/jobs${params(query)}`),
   job: (jobId: string) => request<Job>(`/api/jobs/${encodeURIComponent(jobId)}`),
 };

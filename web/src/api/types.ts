@@ -26,6 +26,53 @@ export interface ImportSummary {
   error_count: number;
 }
 
+export interface ImportDetail {
+  id: number;
+  source_type: string;
+  source_path: string;
+  source_file_name: string;
+  source_file_size: number | null;
+  started_at: string;
+  finished_at: string | null;
+  status: string;
+  total_rows: number;
+  inserted_groups: number;
+  updated_groups: number;
+  skipped_groups: number;
+  link_sets_changed: number;
+  inserted_links: number;
+  skipped_links: number;
+  error_count: number;
+  notes: string | null;
+}
+
+export interface ImportPage {
+  items: ImportDetail[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
+export interface ImportErrorRow {
+  id: number;
+  import_id: number;
+  row_number: number | null;
+  source_key: string | null;
+  error_type: string;
+  message: string;
+  raw_value: string | null;
+  created_at: string;
+}
+
+export interface ImportErrorPage {
+  items: ImportErrorRow[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
 export interface ImportStats {
   total_rows: number;
   inserted_groups: number;
@@ -104,6 +151,48 @@ export interface DownloadSummary {
   requested_at: string;
   status: string;
   selected_bytes: number;
+  message: string | null;
+}
+
+export interface DownloadDetail {
+  id: number;
+  record_group_id: number;
+  record_title: string;
+  actor: string;
+  source: string;
+  requested_at: string;
+  output_dir: string;
+  selected_bytes: number;
+  free_bytes_before: number | null;
+  status: string;
+  mega_exit_code: number | null;
+  message: string | null;
+  item_count: number;
+  completed_count: number;
+  failed_count: number;
+}
+
+export interface DownloadPage {
+  items: DownloadDetail[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
+export interface DownloadItemDetail {
+  id: number;
+  download_id: number;
+  link_id: number;
+  link_order: number;
+  mega_url: string;
+  file_type: string | null;
+  size_bytes: number;
+  formatted_size: string | null;
+  status: string;
+  started_at: string | null;
+  finished_at: string | null;
+  mega_exit_code: number | null;
   message: string | null;
 }
 

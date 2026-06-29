@@ -20,8 +20,12 @@ from .models import (
     DoctorCheck,
     DoctorResult,
     DownloadExecutionResult,
+    DownloadItemDetail,
+    DownloadPage,
     DownloadPlan,
     ImportResult,
+    ImportErrorPage,
+    ImportPage,
     ImportProgress,
     ImportStats,
     LinkItem,
@@ -37,7 +41,7 @@ from .models import (
 )
 from .normalizers import build_source_key, clean_text, normalize_file_type
 from .repositories import DownloadRepository, ImportRepository
-from .search import SearchService
+from .search import SearchService, normalize_limit, normalize_page
 
 
 class RecordTreeApp:
@@ -276,6 +280,61 @@ class RecordTreeApp:
             extra_columns=tuple(getattr(importer, "extra_columns", ())),
             notes=notes,
         )
+
+    def list_imports(
+        self,
+        page: int = 1,
+        page_size: int = 50,
+        status: str | None = None,
+        source_type: str | None = None,
+    ) -> ImportPage:
+        normalized_page = normalize_page(page)
+        normalized_page_size = normalize_limit(page_size)
+        conn = self._open_app_db()
+        try:
+            repo = ImportRepository(conn)
+            total = repo.count_imports(status=status, source_type=source_type)
+            offset = (normalized_page - 1) * normalized_page_size
+            items = repo.list_imports(
+                normalized_page_size,
+                offset,
+                status=status,
+                source_type=source_type,
+            )
+            total_pages = (total + normalized_page_size - 1) // normalized_page_size if total else 0
+            return ImportPage(items=items, page=normalized_page, page_size=normalized_page_size, total=total, total_pages=total_pages)
+        finally:
+            conn.close()
+
+    def get_import(self, import_id: int):
+        if import_id < 1:
+            raise ValidationError("Import id must be at least 1.")
+        conn = self._open_app_db()
+        try:
+            result = ImportRepository(conn).get_import(import_id)
+            if result is None:
+                raise NotFoundError(f"Import not found: {import_id}")
+            return result
+        finally:
+            conn.close()
+
+    def list_import_errors(self, import_id: int, page: int = 1, page_size: int = 100) -> ImportErrorPage:
+        if import_id < 1:
+            raise ValidationError("Import id must be at least 1.")
+        normalized_page = normalize_page(page)
+        normalized_page_size = normalize_limit(page_size)
+        conn = self._open_app_db()
+        try:
+            repo = ImportRepository(conn)
+            if repo.get_import(import_id) is None:
+                raise NotFoundError(f"Import not found: {import_id}")
+            total = repo.count_errors(import_id)
+            offset = (normalized_page - 1) * normalized_page_size
+            items = repo.list_error_details(import_id, normalized_page_size, offset)
+            total_pages = (total + normalized_page_size - 1) // normalized_page_size if total else 0
+            return ImportErrorPage(items=items, page=normalized_page, page_size=normalized_page_size, total=total, total_pages=total_pages)
+        finally:
+            conn.close()
 
     def stats(self) -> StatsResult:
         conn = self._open_app_db()
@@ -552,6 +611,57 @@ class RecordTreeApp:
         except Exception:
             conn.rollback()
             raise
+        finally:
+            conn.close()
+
+    def list_downloads(
+        self,
+        page: int = 1,
+        page_size: int = 50,
+        status: str | None = None,
+        record_id: int | None = None,
+    ) -> DownloadPage:
+        normalized_page = normalize_page(page)
+        normalized_page_size = normalize_limit(page_size)
+        if record_id is not None and record_id < 1:
+            raise ValidationError("Record id must be at least 1.")
+        conn = self._open_app_db()
+        try:
+            repo = DownloadRepository(conn)
+            total = repo.count_downloads(status=status, record_id=record_id)
+            offset = (normalized_page - 1) * normalized_page_size
+            items = repo.list_downloads(
+                normalized_page_size,
+                offset,
+                status=status,
+                record_id=record_id,
+            )
+            total_pages = (total + normalized_page_size - 1) // normalized_page_size if total else 0
+            return DownloadPage(items=items, page=normalized_page, page_size=normalized_page_size, total=total, total_pages=total_pages)
+        finally:
+            conn.close()
+
+    def get_download(self, download_id: int):
+        if download_id < 1:
+            raise ValidationError("Download id must be at least 1.")
+        conn = self._open_app_db()
+        try:
+            result = DownloadRepository(conn).get_download(download_id)
+            if result is None:
+                raise NotFoundError(f"Download not found: {download_id}")
+            return result
+        finally:
+            conn.close()
+
+    def list_download_items(self, download_id: int) -> list[DownloadItemDetail]:
+        if download_id < 1:
+            raise ValidationError("Download id must be at least 1.")
+        conn = self._open_app_db()
+        try:
+            repo = DownloadRepository(conn)
+            if repo.get_download(download_id) is None:
+                raise NotFoundError(f"Download not found: {download_id}")
+            return repo.list_download_items(download_id)
         finally:
             conn.close()
 

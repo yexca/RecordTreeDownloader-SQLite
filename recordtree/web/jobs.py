@@ -18,6 +18,7 @@ from .schemas import ActorDownloadRequest, DownloadRequest
 
 JobStatus = Literal["queued", "running", "completed", "failed"]
 JobKind = Literal["import", "download"]
+ACTIVE_STATUSES = {"queued", "running"}
 
 
 def utc_now_iso() -> str:
@@ -105,6 +106,17 @@ class JobManager:
             if job is None:
                 raise KeyError(job_id)
             return _copy_job(job)
+
+    def list(self, kind: JobKind | None = None, active: bool | None = None) -> list[Job]:
+        with self._lock:
+            jobs = list(self._jobs.values())
+            if kind is not None:
+                jobs = [job for job in jobs if job.kind == kind]
+            if active is True:
+                jobs = [job for job in jobs if job.status in ACTIVE_STATUSES]
+            elif active is False:
+                jobs = [job for job in jobs if job.status not in ACTIVE_STATUSES]
+            return [_copy_job(job) for job in sorted(jobs, key=lambda item: item.created_at, reverse=True)]
 
     def list_events(self, job_id: str, after: int = 0) -> list[JobEvent]:
         with self._lock:
