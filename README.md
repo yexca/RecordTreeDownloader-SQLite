@@ -45,6 +45,36 @@ Runtime data is mounted from the host so it survives container recreation:
 
 More Docker notes are in [Docker Development Guide](dev_documents_webui/docker_development.md).
 
+## Local WebUI Development
+
+For local development without Docker, install the Python package with WebUI and test dependencies:
+
+```bash
+python -m pip install -e ".[web,dev]"
+```
+
+Start the FastAPI backend:
+
+```bash
+uvicorn recordtree.web.api:app --host 127.0.0.1 --port 8000
+```
+
+In another terminal, install and run the Vite frontend:
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Open the Vite URL shown in the terminal, usually:
+
+```text
+http://127.0.0.1:5173
+```
+
+The production Docker image serves the built frontend from the backend on port 8000; the Vite dev server is only for iterative frontend development.
+
 ## Installation
 
 On Windows, the recommended setup is to run the installer script from the project root:
@@ -174,6 +204,13 @@ pytest
 ```
 
 MEGAcmd tests use mocks and do not require a real MEGA account or network access.
+
+Build the frontend production bundle:
+
+```bash
+cd web
+npm run build
+```
 
 ## Maintainer Docs
 

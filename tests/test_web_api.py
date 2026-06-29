@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 from pathlib import Path
 import time
@@ -13,6 +14,13 @@ from recordtree.importer.service import ImportService
 from recordtree.models import ImportRecord, LinkItem, MegaCommandResult, MegaLoginStatus
 from recordtree.repositories import ImportRepository, utc_now_sql
 from recordtree.web.api import app
+from recordtree.web.serializers import to_json_safe
+
+
+@dataclass(frozen=True)
+class _NestedPathPayload:
+    path: Path
+    values: set[str]
 
 
 def _record() -> ImportRecord:
@@ -306,6 +314,44 @@ def test_download_job_records_output_chunks(
     assert "100%" in events.text
 
 
+def test_actor_download_job_runs_selected_undownloaded_records(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    group_id = _setup_record(tmp_path, monkeypatch)
+    client = TestClient(app)
+    actor_id = client.get("/api/actors", params={"query": "api"}).json()[0]["id"]
+    monkeypatch.setattr("recordtree.mega.resolve_executable", lambda configured: configured)
+    monkeypatch.setattr(
+        "recordtree.mega.check_login",
+        lambda _whoami: MegaLoginStatus(True, 0, "Account: test"),
+    )
+    monkeypatch.setattr(
+        "recordtree.mega.download_link",
+        lambda *_args, **_kwargs: MegaCommandResult(0, "ok", ""),
+    )
+
+    response = client.post(
+        "/api/downloads/actor",
+        json={
+            "actor_id": actor_id,
+            "count": 1,
+            "types": "m4a",
+            "include_par2": False,
+        },
+    )
+
+    assert response.status_code == 200
+    job = _wait_for_job(client, response.json()["job_id"])
+    assert job["kind"] == "download"
+    assert job["status"] == "completed"
+    assert job["target"] == {"actor_id": actor_id}
+    assert job["result"]["actor_id"] == actor_id
+    assert job["result"]["selected_count"] == 1
+    assert job["result"]["results"][0]["record_group_id"] == group_id
+    assert job["result"]["results"][0]["status"] == "completed"
+
+
 def test_blocked_download_job_reports_failed_status_and_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -347,6 +393,21 @@ def test_missing_job_returns_404() -> None:
 
     assert response.status_code == 404
     assert response.json()["error"] == "NotFoundError"
+
+
+def test_to_json_safe_serializes_dataclasses_paths_and_sets(tmp_path: Path) -> None:
+    payload = {
+        "nested": _NestedPathPayload(path=tmp_path / "data.sqlite3", values={"beta", "alpha"}),
+        Path("path-key"): [tmp_path / "download"],
+    }
+
+    assert to_json_safe(payload) == {
+        "nested": {
+            "path": str(tmp_path / "data.sqlite3"),
+            "values": ["alpha", "beta"],
+        },
+        "path-key": [str(tmp_path / "download")],
+    }
 
 
 def _wait_for_job(client: TestClient, job_id: str) -> dict[str, object]:
