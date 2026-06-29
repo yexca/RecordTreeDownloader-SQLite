@@ -6,6 +6,17 @@
 body {
   margin: 0;
   background: #f6f7f8;
+  font-family:
+    Inter,
+    "Noto Sans JP",
+    "Noto Sans CJK JP",
+    "Yu Gothic UI",
+    "Yu Gothic",
+    Meiryo,
+    "Hiragino Sans",
+    "Microsoft YaHei UI",
+    system-ui,
+    sans-serif;
 }
 
 .table-scroll {
