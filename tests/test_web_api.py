@@ -246,7 +246,8 @@ async def test_maintenance_endpoints_report_and_run_safe_actions(
 
     async with _test_client() as client:
         summary = (await client.get("/api/maintenance/summary")).json()
-        assert summary["doctor_ok"] is True
+        assert summary["ok"] is True
+        assert {check["name"] for check in summary["checks"]} >= {"config", "database", "schema", "downloads_dir", "logs_dir"}
         assert summary["stats"]["total_record_groups"] == 1
         assert summary["database_size_bytes"] > 0
         assert summary["latest_backup"] is None

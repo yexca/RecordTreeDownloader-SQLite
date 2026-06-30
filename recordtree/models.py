@@ -308,9 +308,9 @@ class BackupSummary:
 
 @dataclass(frozen=True)
 class MaintenanceSummary:
-    doctor: DoctorResult
-    doctor_ok: bool
     stats: StatsResult
+    checks: list[DoctorCheck]
+    ok: bool
     database_path: Path
     database_size_bytes: int | None
     backup_dir: Path

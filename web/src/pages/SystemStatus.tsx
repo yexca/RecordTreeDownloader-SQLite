@@ -1,16 +1,17 @@
 import { Button, Group, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconDatabaseExport, IconDownload, IconRefresh, IconSettings, IconStethoscope } from '@tabler/icons-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type {
   BackupSummary,
   IntegrityResult,
   MaintenanceActionResult,
   MaintenanceSummary,
+  MegaAccountStatus,
+  MegaCommandStatus,
   OrphanReport,
 } from '../api/types';
-import { EmptyState } from '../components/EmptyState';
 import { CheckBadge } from '../components/StatusBadge';
 import { formatBytes } from '../components/format';
 import { useCachedState } from '../state/pageState';
@@ -36,7 +37,10 @@ const orphanLabels: Record<keyof Omit<OrphanReport, 'ok'>, string> = {
 export default function SystemStatus() {
   const [summary, setSummary] = useCachedState<MaintenanceSummary | null>('maintenance.summary', null);
   const [lastCheckedAt, setLastCheckedAt] = useCachedState<string | null>('maintenance.lastCheckedAt', null);
+  const [megaStatus, setMegaStatus] = useCachedState<MegaAccountStatus | null>('maintenance.megaStatus', null);
+  const [megaCheckedAt, setMegaCheckedAt] = useCachedState<string | null>('maintenance.megaCheckedAt', null);
   const [error, setError] = useState<string | null>(null);
+  const [megaError, setMegaError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [lastResult, setLastResult] = useCachedState<ActionResult | null>('maintenance.lastResult', null);
 
@@ -54,6 +58,25 @@ export default function SystemStatus() {
     setBusy('refresh');
     try {
       await loadSummary();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!summary && busy !== 'refresh') void refreshSummary();
+    // Load local maintenance summary once; it does not invoke MEGAcmd.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const refreshMegaStatus = async () => {
+    setBusy('mega');
+    setMegaError(null);
+    try {
+      setMegaStatus(await api.megaStatus());
+      setMegaCheckedAt(new Date().toLocaleString());
+    } catch (err) {
+      setMegaError(err instanceof Error ? err.message : 'MEGAcmd status check failed');
     } finally {
       setBusy(null);
     }
@@ -79,20 +102,13 @@ export default function SystemStatus() {
 
   const pathChecks = useMemo(
     () =>
-      summary?.doctor.checks.filter((check) =>
+      summary?.checks.filter((check) =>
         ['config', 'database', 'downloads_dir', 'logs_dir'].includes(check.name),
       ) ?? [],
     [summary],
   );
-  const megaChecks = useMemo(
-    () =>
-      summary?.doctor.checks.filter((check) =>
-        ['mega-whoami', 'mega-get', 'mega_login'].includes(check.name),
-      ) ?? [],
-    [summary],
-  );
-  const failingChecks = summary?.doctor.checks.filter((check) => check.status === 'fail') ?? [];
-  const warningChecks = summary?.doctor.checks.filter((check) => check.status === 'warn') ?? [];
+  const failingChecks = summary?.checks.filter((check) => check.status === 'fail') ?? [];
+  const warningChecks = summary?.checks.filter((check) => check.status === 'warn') ?? [];
 
   return (
     <Stack gap="md">
@@ -100,8 +116,8 @@ export default function SystemStatus() {
         <div>
           <Title order={2}>Maintenance</Title>
           <Text size="sm" c="dimmed">
-            Diagnostics, database backup, integrity checks, and local runtime maintenance.
-            {lastCheckedAt ? ` Last diagnostics ${lastCheckedAt}.` : ''}
+            Local paths, database health, backups, and explicit MEGAcmd checks.
+            {lastCheckedAt ? ` Last local refresh ${lastCheckedAt}.` : ''}
           </Text>
         </div>
         <Group>
@@ -111,9 +127,9 @@ export default function SystemStatus() {
             onClick={() => void refreshSummary()}
             loading={busy === 'refresh'}
           >
-            Run Diagnostics
+            Refresh Local
           </Button>
-          {summary ? <CheckBadge value={summary.doctor_ok ? 'pass' : 'fail'} /> : null}
+          {summary ? <CheckBadge value={summary.ok ? 'pass' : 'fail'} /> : null}
         </Group>
       </Group>
 
@@ -128,12 +144,14 @@ export default function SystemStatus() {
 
       {!summary ? (
         <Stack p="md" className="section">
-          <EmptyState message="Run diagnostics to check paths, database health, backups, and MEGAcmd availability." />
+          <Text size="sm" c="dimmed">
+            Loading local maintenance summary...
+          </Text>
         </Stack>
       ) : (
       <>
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }}>
-        <Metric label="Overall" value={summary.doctor_ok ? 'Healthy' : 'Needs attention'} status={summary.doctor_ok ? 'pass' : 'fail'} />
+        <Metric label="Local status" value={summary.ok ? 'Healthy' : 'Needs attention'} status={summary.ok ? 'pass' : 'fail'} />
         <Metric label="Failures" value={failingChecks.length} />
         <Metric label="Warnings" value={warningChecks.length} />
         <Metric label="Database" value={formatBytes(summary.database_size_bytes)} />
@@ -254,10 +272,14 @@ export default function SystemStatus() {
 
       <SimpleGrid cols={{ base: 1, lg: 2 }}>
         <CheckTable title="Paths" checks={pathChecks} />
-        <CheckTable title="MEGAcmd" checks={megaChecks} />
+        <MegaPanel
+          status={megaStatus}
+          error={megaError}
+          checkedAt={megaCheckedAt}
+          loading={busy === 'mega'}
+          onRefresh={() => void refreshMegaStatus()}
+        />
       </SimpleGrid>
-
-      <CheckTable title="Doctor Checks" checks={summary.doctor.checks} striped />
       </>
       )}
     </Stack>
@@ -300,6 +322,78 @@ function CheckTable({ title, checks, striped = false }: { title: string; checks:
         </Table>
       </div>
     </Stack>
+  );
+}
+
+function MegaPanel({
+  status,
+  error,
+  checkedAt,
+  loading,
+  onRefresh,
+}: {
+  status: MegaAccountStatus | null;
+  error: string | null;
+  checkedAt: string | null;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <Stack p="md" className="section">
+      <Group justify="space-between" align="flex-start">
+        <div>
+          <Title order={3} size="h4">
+            MEGAcmd
+          </Title>
+          <Text size="sm" c="dimmed">
+            {checkedAt ? `Last checked ${checkedAt}.` : 'Not checked.'}
+          </Text>
+        </div>
+        <Button variant="light" leftSection={<IconRefresh size={16} />} loading={loading} onClick={onRefresh}>
+          Check MEGAcmd
+        </Button>
+      </Group>
+      {error ? (
+        <Text size="sm" c="red">
+          {error}
+        </Text>
+      ) : null}
+      {!status ? (
+        <Text size="sm" c="dimmed">
+          Use Check MEGAcmd to query command availability and login state.
+        </Text>
+      ) : (
+        <div className="table-scroll">
+          <Table withTableBorder verticalSpacing={6} fz="sm">
+            <Table.Tbody>
+              <Table.Tr>
+                <Table.Th className="nowrap">Login</Table.Th>
+                <Table.Td className="nowrap">
+                  <CheckBadge value={status.login.logged_in ? 'pass' : 'fail'} />
+                </Table.Td>
+                <Table.Td className="url-cell">{status.login.message}</Table.Td>
+              </Table.Tr>
+              <MegaCommandRow name="mega-get" command={status.mega_get} />
+              <MegaCommandRow name="mega-whoami" command={status.mega_whoami} />
+              <MegaCommandRow name="mega-login" command={status.mega_login} />
+              <MegaCommandRow name="mega-logout" command={status.mega_logout} />
+            </Table.Tbody>
+          </Table>
+        </div>
+      )}
+    </Stack>
+  );
+}
+
+function MegaCommandRow({ name, command }: { name: string; command: MegaCommandStatus }) {
+  return (
+    <Table.Tr>
+      <Table.Th className="nowrap">{name}</Table.Th>
+      <Table.Td className="nowrap">
+        <CheckBadge value={command.available ? 'pass' : 'fail'} />
+      </Table.Td>
+      <Table.Td className="url-cell">{command.resolved || command.message}</Table.Td>
+    </Table.Tr>
   );
 }
 

@@ -23,9 +23,9 @@ export interface BackupSummary {
 }
 
 export interface MaintenanceSummary {
-  doctor: DoctorResult;
-  doctor_ok: boolean;
   stats: StatsResult;
+  checks: DoctorCheck[];
+  ok: boolean;
   database_path: string;
   database_size_bytes: number | null;
   backup_dir: string;

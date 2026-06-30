@@ -360,17 +360,41 @@ class RecordTreeApp:
         app_config = config_module.load_config(config_path)
         database_size = app_config.database_path.stat().st_size if app_config.database_path.exists() else None
         backup_dir = app_config.logs_dir / "backups"
-        doctor = self.doctor()
+        checks = self._local_maintenance_checks(config_path, app_config)
         return MaintenanceSummary(
-            doctor=doctor,
-            doctor_ok=doctor.ok,
             stats=self.stats(),
+            checks=checks,
+            ok=DoctorResult(checks).ok,
             database_path=app_config.database_path,
             database_size_bytes=database_size,
             backup_dir=backup_dir,
             latest_backup=_latest_backup(backup_dir),
             backups=_list_backups(backup_dir),
         )
+
+    def _local_maintenance_checks(self, config_path: Path, app_config) -> list[DoctorCheck]:
+        checks: list[DoctorCheck] = [DoctorCheck("config", "pass", str(config_path.resolve()))]
+        try:
+            conn = db.connect(app_config.database_path)
+            try:
+                version = conn.execute(
+                    "SELECT value FROM schema_meta WHERE key = 'schema_version'"
+                ).fetchone()
+            finally:
+                conn.close()
+        except Exception as error:
+            checks.append(DoctorCheck("database", "fail", str(error)))
+            checks.append(DoctorCheck("schema", "fail", "Schema version could not be read."))
+        else:
+            checks.append(DoctorCheck("database", "pass", str(app_config.database_path)))
+            if version is None:
+                checks.append(DoctorCheck("schema", "fail", "schema_version is missing."))
+            else:
+                checks.append(DoctorCheck("schema", "pass", str(version["value"])))
+
+        for name, path in (("downloads_dir", app_config.downloads_dir), ("logs_dir", app_config.logs_dir)):
+            checks.append(_check_writable_dir(name, path))
+        return checks
 
     def backup_database(self) -> BackupSummary:
         config_path = config_module.ensure_config(Path("env/config.toml"))
