@@ -370,6 +370,23 @@ export interface MegaAccountStatus {
   persistence_dir: string;
 }
 
+export interface SettingsPaths {
+  downloads: string;
+}
+
+export interface SettingsDownload {
+  folder_template: string;
+  safety_margin_percent: number;
+  minimum_free_space_mb: number;
+  include_par2_by_default: boolean;
+}
+
+export interface SettingsPayload {
+  paths: SettingsPaths;
+  download: SettingsDownload;
+  variables: Record<string, string>;
+}
+
 export interface ApiError {
   detail: string;
   error?: string;

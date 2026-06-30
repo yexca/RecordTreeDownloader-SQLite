@@ -21,6 +21,8 @@ Excel is the primary data source because it is the most complete current Record 
 
 Download status is authoritative at the link level. A record group can be `all`, `partial`, `none`, or `unknown` based on active link statuses, which preserves mixed states when a group has multiple files.
 
+Default download output is built from the configured downloads root plus a relative folder template. The default template is `{actor_safe_name}/{record_group_id}`.
+
 `legacy/` is reference-only. It preserves the original scripts for comparison and migration context, but the new `recordtree/` package must not import from it.
 
 MEGA credentials are not stored by this application. The tool checks MEGAcmd login state with `mega-whoami` and runs `mega-get` only after preflight checks pass.

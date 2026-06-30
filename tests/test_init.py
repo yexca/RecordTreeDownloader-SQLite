@@ -108,7 +108,9 @@ def test_load_config_uses_defaults_for_missing_sections(tmp_path: Path, monkeypa
     assert loaded.downloads_dir == tmp_path / "downloads"
     assert loaded.logs_dir == tmp_path / "logs"
     assert loaded.safety_margin_percent == 5
+    assert loaded.safety_margin_min_mb == 10240
     assert loaded.include_par2_by_default is False
+    assert loaded.folder_template == "{actor_safe_name}/{record_group_id}"
 
 
 def test_resolve_path_keeps_absolute_paths(tmp_path: Path) -> None:

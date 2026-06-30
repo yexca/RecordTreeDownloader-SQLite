@@ -190,6 +190,21 @@ body {
   min-width: 0;
 }
 
+.settings-shell {
+  max-width: 860px;
+}
+
+.settings-number-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.settings-number-grid > * {
+  min-width: 0;
+}
+
 .actor-list-item {
   display: flex;
   width: 100%;
@@ -260,5 +275,13 @@ body {
   .records-result-bar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .settings-shell {
+    max-width: none;
+  }
+
+  .settings-number-grid {
+    grid-template-columns: 1fr;
   }
 }

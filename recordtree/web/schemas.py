@@ -52,3 +52,14 @@ class MegaLoginRequest(BaseModel):
     email: str
     password: str
     auth_code: str | None = None
+
+
+class SettingsDownloadRequest(BaseModel):
+    folder_template: str
+    safety_margin_percent: int
+    minimum_free_space_mb: int
+    include_par2_by_default: bool
+
+
+class SettingsUpdateRequest(BaseModel):
+    download: SettingsDownloadRequest

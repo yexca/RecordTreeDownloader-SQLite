@@ -21,6 +21,7 @@ from .models import (
     StatsResult,
 )
 from .normalizers import normalize_date, normalize_search_text
+from .path_templates import DownloadTemplateContext, render_download_folder_template
 from .sizes import calculate_margin
 
 
@@ -600,6 +601,7 @@ class SearchService:
         include_par2: bool,
         type_filter_text: str | None,
         output_dir: Path | None,
+        folder_template: str,
         safety_margin_percent: int,
         safety_margin_min_mb: int,
         only_undownloaded: bool = False,
@@ -635,7 +637,21 @@ class SearchService:
         resolved_output = (
             output_dir.expanduser().resolve()
             if output_dir is not None
-            else (downloads_dir / str(detail.id)).resolve()
+            else (
+                downloads_dir
+                / render_download_folder_template(
+                    folder_template,
+                    DownloadTemplateContext(
+                        record_group_id=detail.id,
+                        actor=detail.actor,
+                        title=detail.title,
+                        source=detail.source,
+                        source_key=detail.source_key,
+                        delivery_date=detail.delivery_date,
+                        entry_date=detail.entry_date,
+                    ),
+                )
+            ).resolve()
         )
         check_parent = nearest_existing_parent(resolved_output)
         free_bytes = shutil.disk_usage(check_parent).free

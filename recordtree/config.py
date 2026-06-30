@@ -5,6 +5,7 @@ from pathlib import Path
 import tomllib
 
 from .exceptions import ConfigError
+from .path_templates import DEFAULT_DOWNLOAD_FOLDER_TEMPLATE, normalize_download_folder_template
 
 
 @dataclass(frozen=True)
@@ -15,6 +16,7 @@ class AppConfig:
     safety_margin_percent: int
     safety_margin_min_mb: int
     include_par2_by_default: bool
+    folder_template: str
     mega_get: str
     mega_whoami: str
     mega_login: str
@@ -31,8 +33,9 @@ def default_config() -> dict[str, object]:
         },
         "download": {
             "safety_margin_percent": 5,
-            "safety_margin_min_mb": 512,
+            "safety_margin_min_mb": 10240,
             "include_par2_by_default": False,
+            "folder_template": DEFAULT_DOWNLOAD_FOLDER_TEMPLATE,
         },
         "mega": {
             "mega_get": "mega-get",
@@ -94,6 +97,9 @@ def load_config(path: Path | None = None) -> AppConfig:
             "include_par2_by_default",
             defaults["download"]["include_par2_by_default"],
         ),
+        folder_template=normalize_download_folder_template(
+            _string_value(download, "folder_template", defaults["download"]["folder_template"])
+        ),
         mega_get=_string_value(mega, "mega_get", defaults["mega"]["mega_get"]),
         mega_whoami=_string_value(mega, "mega_whoami", defaults["mega"]["mega_whoami"]),
         mega_login=_string_value(mega, "mega_login", defaults["mega"]["mega_login"]),
@@ -121,8 +127,9 @@ logs = "logs"
 
 [download]
 safety_margin_percent = 5
-safety_margin_min_mb = 512
+safety_margin_min_mb = 10240
 include_par2_by_default = false
+folder_template = "{actor_safe_name}/{record_group_id}"
 
 [mega]
 mega_get = "mega-get"
@@ -140,6 +147,13 @@ def _section(config: dict[str, object], name: str) -> dict[str, object]:
     if not isinstance(section, dict):
         raise ConfigError(f"Config section [{name}] must be a table.")
     return section
+
+
+def save_config(path: Path, config: AppConfig) -> Path:
+    config_path = path.expanduser()
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(_format_config(config), encoding="utf-8")
+    return config_path.resolve()
 
 
 def _string_value(section: dict[str, object], key: str, default: object) -> str:
@@ -161,3 +175,41 @@ def _bool_value(section: dict[str, object], key: str, default: object) -> bool:
     if not isinstance(value, bool):
         raise ConfigError(f"Config value {key} must be true or false.")
     return value
+
+
+def _format_config(config: AppConfig) -> str:
+    return f"""[paths]
+database = "{_toml_string(_display_path(config.database_path))}"
+downloads = "{_toml_string(_display_path(config.downloads_dir))}"
+logs = "{_toml_string(_display_path(config.logs_dir))}"
+
+[download]
+safety_margin_percent = {config.safety_margin_percent}
+safety_margin_min_mb = {config.safety_margin_min_mb}
+include_par2_by_default = {_toml_bool(config.include_par2_by_default)}
+folder_template = "{_toml_string(config.folder_template)}"
+
+[mega]
+mega_get = "{_toml_string(config.mega_get)}"
+mega_whoami = "{_toml_string(config.mega_whoami)}"
+mega_login = "{_toml_string(config.mega_login)}"
+mega_logout = "{_toml_string(config.mega_logout)}"
+
+[import]
+prefer_xlsx_metadata = {_toml_bool(config.prefer_xlsx_metadata)}
+"""
+
+
+def _display_path(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _toml_string(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _toml_bool(value: bool) -> str:
+    return "true" if value else "false"

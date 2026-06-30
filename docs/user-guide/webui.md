@@ -35,6 +35,8 @@ The WebUI builds a download plan before starting MEGAcmd. You can choose:
 - Output directory
 - Only undownloaded links
 
+Settings > Basic controls the default downloads root, the folder template, `.par2` behavior, and disk-space safety margin. The default folder template is `{actor_safe_name}/{record_group_id}`, which produces actor folders under the downloads root.
+
 Downloads run as background jobs. The UI polls job status and displays captured MEGAcmd output for active jobs. Completed download details also expose persisted MEGAcmd output when a log file is available.
 
 Download output logs are written under:

@@ -123,7 +123,8 @@ def test_download_plan_filters_and_required_bytes(tmp_path: Path, monkeypatch: p
     default_plan = app.build_download_plan(str(group_id))
     assert [link.file_type for link in default_plan.selected_links] == [".mp4", ".m4a"]
     assert default_plan.selected_bytes == 300
-    assert default_plan.margin_bytes == 512 * 1024 * 1024
+    assert default_plan.margin_bytes == 10240 * 1024 * 1024
+    assert default_plan.output_dir == tmp_path / "downloads" / "Download Actor" / str(group_id)
 
     par2_plan = app.build_download_plan(str(group_id), include_par2=True)
     assert [link.file_type for link in par2_plan.selected_links] == [".mp4", ".m4a", ".par2"]

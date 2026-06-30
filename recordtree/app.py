@@ -50,6 +50,7 @@ from .models import (
     StatsResult,
 )
 from .normalizers import build_source_key, clean_text, normalize_file_type
+from .path_templates import allowed_download_template_variables, normalize_download_folder_template
 from .repositories import DownloadRepository, ImportRepository
 from .search import SearchService, normalize_limit, normalize_page
 
@@ -747,6 +748,7 @@ class RecordTreeApp:
                 include_par2=include_par2,
                 type_filter_text=types,
                 output_dir=output,
+                folder_template=app_config.folder_template,
                 safety_margin_percent=app_config.safety_margin_percent,
                 safety_margin_min_mb=app_config.safety_margin_min_mb,
                 only_undownloaded=only_undownloaded,
@@ -903,6 +905,47 @@ class RecordTreeApp:
             return changed
         finally:
             conn.close()
+
+    def web_settings(self) -> dict[str, object]:
+        config_path = config_module.ensure_config(Path("env/config.toml"))
+        app_config = config_module.load_config(config_path)
+        return {
+            "paths": {
+                "downloads": _relative_or_absolute(app_config.downloads_dir),
+            },
+            "download": {
+                "folder_template": app_config.folder_template,
+                "safety_margin_percent": app_config.safety_margin_percent,
+                "minimum_free_space_mb": app_config.safety_margin_min_mb,
+                "include_par2_by_default": app_config.include_par2_by_default,
+            },
+            "variables": allowed_download_template_variables(),
+        }
+
+    def update_web_settings(
+        self,
+        *,
+        folder_template: str,
+        safety_margin_percent: int,
+        minimum_free_space_mb: int,
+        include_par2_by_default: bool,
+    ) -> dict[str, object]:
+        config_path = config_module.ensure_config(Path("env/config.toml"))
+        app_config = config_module.load_config(config_path)
+        if safety_margin_percent < 0:
+            raise ValidationError("Safety margin percent must be non-negative.")
+        if minimum_free_space_mb < 0:
+            raise ValidationError("Minimum free space must be non-negative.")
+        normalized_template = normalize_download_folder_template(folder_template)
+        updated = replace(
+            app_config,
+            safety_margin_percent=safety_margin_percent,
+            safety_margin_min_mb=minimum_free_space_mb,
+            include_par2_by_default=include_par2_by_default,
+            folder_template=normalized_template,
+        )
+        config_module.save_config(config_path, updated)
+        return self.web_settings()
 
     def list_downloads(
         self,
@@ -1152,6 +1195,13 @@ def _import_notes(importer) -> str | None:
             f"{duplicate_rows_merged} extra rows"
         )
     return "; ".join(notes) if notes else None
+
+
+def _relative_or_absolute(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def _extra_columns_note(extra_columns: tuple[str, ...]) -> str | None:

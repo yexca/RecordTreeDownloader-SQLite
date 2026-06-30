@@ -1,21 +1,35 @@
 import {
+  ActionIcon,
   Alert,
+  Badge,
   Button,
+  Checkbox,
   Collapse,
   Group,
+  NumberInput,
   PasswordInput,
   Stack,
   Table,
+  Tabs,
   Text,
   TextInput,
   Title,
+  Tooltip,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconChevronDown, IconChevronRight, IconLogin, IconLogout, IconRefresh } from '@tabler/icons-react';
-import { FormEvent, useState } from 'react';
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconDeviceFloppy,
+  IconLogin,
+  IconLogout,
+  IconRefresh,
+  IconSettings,
+} from '@tabler/icons-react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
-import type { MegaAccountStatus, MegaCommandStatus } from '../api/types';
+import type { MegaAccountStatus, MegaCommandStatus, SettingsPayload } from '../api/types';
 import { CheckBadge } from '../components/StatusBadge';
 import { useCachedState } from '../state/pageState';
 
@@ -31,7 +45,184 @@ function CommandRow({ name, command }: { name: string; command: MegaCommandStatu
   );
 }
 
-export default function Settings() {
+function normalizeTemplate(value: string) {
+  return value.trim().replace(/\\/g, '/').replace(/\/{2,}/g, '/').replace(/^\/+|\/+$/g, '');
+}
+
+function BasicSettings() {
+  const [settings, setSettings] = useCachedState<SettingsPayload | null>('settings.basic', null);
+  const [folderTemplate, setFolderTemplate] = useState('');
+  const [minimumFreeSpaceGb, setMinimumFreeSpaceGb] = useState<number | string>(10);
+  const [safetyMarginPercent, setSafetyMarginPercent] = useState<number | string>(5);
+  const [includePar2, setIncludePar2] = useState(false);
+  const [loading, setLoading] = useState(settings === null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const applySettings = (payload: SettingsPayload) => {
+    setSettings(payload);
+    setFolderTemplate(payload.download.folder_template);
+    setMinimumFreeSpaceGb(payload.download.minimum_free_space_mb / 1024);
+    setSafetyMarginPercent(payload.download.safety_margin_percent);
+    setIncludePar2(payload.download.include_par2_by_default);
+  };
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      applySettings(await api.settings());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Settings failed to load');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!settings) void load();
+    else applySettings(settings);
+    // Initial cache hydration only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const preview = useMemo(() => {
+    const template = normalizeTemplate(folderTemplate || '{actor_safe_name}/{record_group_id}');
+    return `${settings?.paths.downloads || 'downloads'} / ${template
+      .replaceAll('{actor_safe_name}', 'API Actor')
+      .replaceAll('{actor}', 'API Actor')
+      .replaceAll('{record_group_id}', '123')
+      .replaceAll('{source}', 'niconico')
+      .replaceAll('{source_key}', 'sample-key')
+      .replaceAll('{title_safe}', 'Sample Title')
+      .replaceAll('{title}', 'Sample Title')
+      .replaceAll('{delivery_date}', '2026-01-02')
+      .replaceAll('{entry_date}', '2026-01-03')
+      .replaceAll('/', ' / ')}`;
+  }, [folderTemplate, settings?.paths.downloads]);
+
+  const insertVariable = (name: string) => {
+    const token = `{${name}}`;
+    setFolderTemplate((current) => {
+      if (!current.trim()) return token;
+      return `${current.replace(/\/?$/, '/')}${token}`;
+    });
+  };
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const next = await api.updateSettings({
+        download: {
+          folder_template: folderTemplate,
+          safety_margin_percent: Number(safetyMarginPercent) || 0,
+          minimum_free_space_mb: Math.round((Number(minimumFreeSpaceGb) || 0) * 1024),
+          include_par2_by_default: includePar2,
+        },
+      });
+      applySettings(next);
+      notifications.show({ color: 'teal', message: 'Settings saved.' });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Settings save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit}>
+      <Stack gap="md">
+        <Group justify="space-between" align="flex-start">
+          <div>
+            <Title order={3} size="h4">
+              Basic
+            </Title>
+            <Text size="sm" c="dimmed">
+              Configure download defaults used by plans and jobs.
+            </Text>
+          </div>
+          <Group gap="xs">
+            <Tooltip label="Reload settings">
+              <ActionIcon variant="light" aria-label="Reload settings" loading={loading} onClick={() => void load()}>
+                <IconRefresh size={16} />
+              </ActionIcon>
+            </Tooltip>
+            <Button type="submit" leftSection={<IconDeviceFloppy size={16} />} loading={saving}>
+              Save
+            </Button>
+          </Group>
+        </Group>
+
+        {error ? <Alert color="red">{error}</Alert> : null}
+
+        <Stack p="md" className="section" gap="md">
+          <Stack gap={2}>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
+              Download root
+            </Text>
+            <Text size="sm" className="url-cell">
+              {settings?.paths.downloads || 'downloads'}
+            </Text>
+            <Text size="xs" c="dimmed">
+              Locked to the container downloads mount so completed files stay synced to the host.
+            </Text>
+          </Stack>
+          <TextInput
+            label="Folder template"
+            description="Relative to the download root. A leading slash is trimmed when saved."
+            value={folderTemplate}
+            onChange={(event) => setFolderTemplate(event.currentTarget.value)}
+            placeholder="{actor_safe_name}/{record_group_id}"
+          />
+          {settings ? (
+            <Group gap="xs">
+              {Object.entries(settings.variables).map(([name, help]) => (
+                <Tooltip key={name} label={help}>
+                  <Badge variant="light" className="click-row" onClick={() => insertVariable(name)}>
+                    {`{${name}}`}
+                  </Badge>
+                </Tooltip>
+              ))}
+            </Group>
+          ) : null}
+          <Alert color="blue" title="Preview">
+            {preview}
+          </Alert>
+          <div className="settings-number-grid">
+            <NumberInput
+              label="Minimum free space"
+              description="Downloads only start when enough space remains after the selected files are added."
+              suffix=" GB"
+              min={0}
+              decimalScale={2}
+              value={minimumFreeSpaceGb}
+              onChange={setMinimumFreeSpaceGb}
+            />
+            <NumberInput
+              label="Safety margin"
+              description="Extra percentage buffer added to the selected download size for estimates, temporary files, and MEGAcmd overhead."
+              suffix="%"
+              min={0}
+              value={safetyMarginPercent}
+              onChange={setSafetyMarginPercent}
+            />
+          </div>
+          <Group>
+            <Checkbox
+              label="Include .par2 by default"
+              checked={includePar2}
+              onChange={(event) => setIncludePar2(event.currentTarget.checked)}
+            />
+          </Group>
+        </Stack>
+      </Stack>
+    </form>
+  );
+}
+
+function MegaSettings() {
   const [status, setStatus] = useCachedState<MegaAccountStatus | null>('settings.status', null);
   const [lastCheckedAt, setLastCheckedAt] = useCachedState<string | null>('settings.lastCheckedAt', null);
   const [error, setError] = useState<string | null>(null);
@@ -97,16 +288,26 @@ export default function Settings() {
 
   return (
     <Stack gap="md">
-      <Group justify="space-between" align="end">
+      <Group justify="space-between" align="flex-start">
         <div>
-          <Title order={2}>Settings</Title>
+          <Title order={3} size="h4">
+            MEGAcmd
+          </Title>
           <Text size="sm" c="dimmed">
-            Configure local paths, download defaults, and MEGAcmd integration.
+            Login state is stored by MEGAcmd, not in the RecordTree database.
+            {lastCheckedAt ? ` Last synced ${lastCheckedAt}.` : ''}
           </Text>
         </div>
-        <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={() => void refresh()} loading={busy}>
-          Check MEGAcmd
-        </Button>
+        <Group gap="xs">
+          <Badge variant="light" color={status ? (loggedIn ? 'teal' : 'red') : 'gray'}>
+            {status ? (loggedIn ? 'Logged in' : 'Not logged in') : 'Not synced'}
+          </Badge>
+          <Tooltip label="Sync MEGAcmd status">
+            <ActionIcon variant="light" aria-label="Sync MEGAcmd status" onClick={() => void refresh()} loading={busy}>
+              <IconRefresh size={16} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
       </Group>
 
       {error ? (
@@ -116,27 +317,23 @@ export default function Settings() {
       ) : null}
 
       {!status ? (
-        <Alert color={error ? 'red' : 'blue'} title={error ? 'MEGAcmd status unavailable' : 'MEGAcmd status not checked'}>
-          {error || 'Use Check MEGAcmd to query the local MEGAcmd session. This avoids running MEGAcmd commands just by opening the page.'}
+        <Alert color="blue" title="MEGAcmd status not synced">
+          Use the sync button to query the local MEGAcmd session.
         </Alert>
       ) : null}
 
-      {status ? (
       <Stack p="md" className="section" gap="md">
         <Group justify="space-between" align="flex-start">
           <div>
-            <Title order={3} size="h4">
-              MEGAcmd Account
-            </Title>
+            <Title order={4}>Account</Title>
             <Text size="sm" c="dimmed">
-              Login state is stored by MEGAcmd, not in the RecordTree database.
-              {lastCheckedAt ? ` Last checked ${lastCheckedAt}.` : ''}
+              Password is sent only to MEGAcmd for a login attempt.
             </Text>
           </div>
-          <CheckBadge value={loggedIn ? 'pass' : 'fail'} />
+          {status ? <CheckBadge value={loggedIn ? 'pass' : 'fail'} /> : null}
         </Group>
 
-        {loggedIn ? (
+        {status && loggedIn ? (
           <Stack gap="md">
             <Table withTableBorder verticalSpacing={6} fz="sm">
               <Table.Tbody>
@@ -171,10 +368,6 @@ export default function Settings() {
         ) : (
           <form onSubmit={submitLogin}>
             <Stack gap="md">
-              <Text size="sm" c="dimmed">
-                Password is sent only to MEGAcmd for this login attempt.
-              </Text>
-
               <TextInput
                 label="Email"
                 value={email}
@@ -205,15 +398,11 @@ export default function Settings() {
           </form>
         )}
       </Stack>
-      ) : null}
 
-      {status ? (
       <Stack p="md" className="section">
         <Group justify="space-between" align="flex-start">
           <div>
-            <Title order={3} size="h4">
-              Advanced
-            </Title>
+            <Title order={4}>Advanced</Title>
             <Text size="sm" c="dimmed">
               MEGAcmd executable paths and container persistence details.
             </Text>
@@ -222,47 +411,82 @@ export default function Settings() {
             variant="subtle"
             leftSection={advancedOpen ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
             onClick={toggleAdvanced}
+            disabled={!status}
           >
             {advancedOpen ? 'Hide' : 'Show'}
           </Button>
         </Group>
 
-        <Collapse in={advancedOpen}>
-          <Stack gap="md" pt="sm">
-            <Table withTableBorder verticalSpacing={6} fz="sm">
-              <Table.Tbody>
-                <Table.Tr>
-                  <Table.Th className="nowrap">Home</Table.Th>
-                  <Table.Td className="url-cell">{status.home_dir}</Table.Td>
-                </Table.Tr>
-                <Table.Tr>
-                  <Table.Th className="nowrap">Persistent data</Table.Th>
-                  <Table.Td className="url-cell">{status.persistence_dir}</Table.Td>
-                </Table.Tr>
-              </Table.Tbody>
-            </Table>
-
-            <div className="table-scroll">
+        <Collapse in={advancedOpen && Boolean(status)}>
+          {status ? (
+            <Stack gap="md" pt="sm">
               <Table withTableBorder verticalSpacing={6} fz="sm">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Command</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th>Resolved path</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
                 <Table.Tbody>
-                  <CommandRow name="mega-get" command={status.mega_get} />
-                  <CommandRow name="mega-whoami" command={status.mega_whoami} />
-                  <CommandRow name="mega-login" command={status.mega_login} />
-                  <CommandRow name="mega-logout" command={status.mega_logout} />
+                  <Table.Tr>
+                    <Table.Th className="nowrap">Home</Table.Th>
+                    <Table.Td className="url-cell">{status.home_dir}</Table.Td>
+                  </Table.Tr>
+                  <Table.Tr>
+                    <Table.Th className="nowrap">Persistent data</Table.Th>
+                    <Table.Td className="url-cell">{status.persistence_dir}</Table.Td>
+                  </Table.Tr>
                 </Table.Tbody>
               </Table>
-            </div>
-          </Stack>
+
+              <div className="table-scroll">
+                <Table withTableBorder verticalSpacing={6} fz="sm">
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Command</Table.Th>
+                      <Table.Th>Status</Table.Th>
+                      <Table.Th>Resolved path</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    <CommandRow name="mega-get" command={status.mega_get} />
+                    <CommandRow name="mega-whoami" command={status.mega_whoami} />
+                    <CommandRow name="mega-login" command={status.mega_login} />
+                    <CommandRow name="mega-logout" command={status.mega_logout} />
+                  </Table.Tbody>
+                </Table>
+              </div>
+            </Stack>
+          ) : null}
         </Collapse>
       </Stack>
-      ) : null}
+    </Stack>
+  );
+}
+
+export default function Settings() {
+  return (
+    <Stack gap="md" className="settings-shell">
+      <Group justify="space-between" align="end">
+        <div>
+          <Title order={2}>Settings</Title>
+          <Text size="sm" c="dimmed">
+            Configure download defaults and MEGAcmd integration.
+          </Text>
+        </div>
+      </Group>
+
+      <Tabs defaultValue="basic" keepMounted={false}>
+        <Tabs.List>
+          <Tabs.Tab value="basic" leftSection={<IconSettings size={16} />}>
+            Basic
+          </Tabs.Tab>
+          <Tabs.Tab value="mega" leftSection={<IconRefresh size={16} />}>
+            MEGAcmd
+          </Tabs.Tab>
+        </Tabs.List>
+
+        <Tabs.Panel value="basic" pt="md">
+          <BasicSettings />
+        </Tabs.Panel>
+        <Tabs.Panel value="mega" pt="md">
+          <MegaSettings />
+        </Tabs.Panel>
+      </Tabs>
     </Stack>
   );
 }

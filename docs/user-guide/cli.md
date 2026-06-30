@@ -69,4 +69,12 @@ recordtree download --actor 12 --count 5 --yes
 
 By default, `.par2` files are excluded. Use `--include-par2` to include them.
 
+When `--output` is omitted, downloads are stored under the configured downloads root using the folder template from `env/config.toml`. The default template is:
+
+```text
+{actor_safe_name}/{record_group_id}
+```
+
+With the default downloads root, this produces paths like `downloads/Actor Name/123/`.
+
 Each download attempt records item status in SQLite. When MEGAcmd runs, its streamed output is also written to `logs/downloads/download_<download_id>.log`.

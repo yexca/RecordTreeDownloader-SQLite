@@ -228,9 +228,42 @@ async def test_search_detail_stats_and_download_plan_endpoints(
             )
         ).json()
     assert plan["record_group_id"] == group_id
-    assert plan["output_dir"].endswith(f"downloads\\{group_id}") or plan["output_dir"].endswith(f"downloads/{group_id}")
+    assert plan["output_dir"].endswith(f"downloads\\API Actor\\{group_id}") or plan["output_dir"].endswith(
+        f"downloads/API Actor/{group_id}"
+    )
     assert [link["file_type"] for link in plan["selected_links"]] == [".m4a"]
     assert plan["type_filter"] == [".m4a", ".mp4"]
+
+
+async def test_settings_endpoints_read_and_update_download_defaults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _setup_record(tmp_path, monkeypatch)
+
+    async with _test_client() as client:
+        current = (await client.get("/api/settings")).json()
+        assert current["download"]["folder_template"] == "{actor_safe_name}/{record_group_id}"
+        assert current["download"]["minimum_free_space_mb"] == 10240
+        assert "title_safe" in current["variables"]
+
+        updated = (
+            await client.put(
+                "/api/settings",
+                json={
+                    "download": {
+                        "folder_template": "/{source}//{actor_safe_name}/{record_group_id}/",
+                        "safety_margin_percent": 7,
+                        "minimum_free_space_mb": 2048,
+                        "include_par2_by_default": True,
+                    },
+                },
+            )
+        ).json()
+        assert updated["download"]["folder_template"] == "{source}/{actor_safe_name}/{record_group_id}"
+        assert updated["download"]["safety_margin_percent"] == 7
+        assert updated["download"]["minimum_free_space_mb"] == 2048
+        assert updated["download"]["include_par2_by_default"] is True
 
 
 async def test_maintenance_endpoints_report_and_run_safe_actions(

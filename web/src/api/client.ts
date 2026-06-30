@@ -23,6 +23,7 @@ import type {
   RecordDetail,
   RecordPage,
   RecordSummary,
+  SettingsPayload,
   StatsResult,
 } from './types';
 
@@ -86,6 +87,19 @@ export const api = {
   megaLogout: () =>
     request<MegaAccountStatus>('/api/mega/logout', {
       method: 'POST',
+    }),
+  settings: () => request<SettingsPayload>('/api/settings'),
+  updateSettings: (body: {
+    download: {
+      folder_template: string;
+      safety_margin_percent: number;
+      minimum_free_space_mb: number;
+      include_par2_by_default: boolean;
+    };
+  }) =>
+    request<SettingsPayload>('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify(body),
     }),
   actors: (query: string, limit: number) =>
     request<ActorSummary[]>(`/api/actors${params({ query, limit })}`),

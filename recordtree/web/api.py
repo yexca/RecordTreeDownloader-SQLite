@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from recordtree.app import RecordTreeApp
 from recordtree.exceptions import ConfigError, NotFoundError, RecordTreeError, ValidationError
 
-from .schemas import ActorDownloadRequest, DownloadPlanRequest, DownloadRequest, MegaLoginRequest
+from .schemas import ActorDownloadRequest, DownloadPlanRequest, DownloadRequest, MegaLoginRequest, SettingsUpdateRequest
 from .serializers import to_json_safe
 from .jobs import JobManager
 
@@ -190,6 +190,23 @@ def doctor() -> dict[str, object]:
 @app.get("/api/mega/status")
 def mega_status() -> dict[str, object]:
     return _serialize(RecordTreeApp().mega_status())
+
+
+@app.get("/api/settings")
+def settings() -> dict[str, object]:
+    return _serialize(RecordTreeApp().web_settings())
+
+
+@app.put("/api/settings")
+def update_settings(request: SettingsUpdateRequest) -> dict[str, object]:
+    return _serialize(
+        RecordTreeApp().update_web_settings(
+            folder_template=request.download.folder_template,
+            safety_margin_percent=request.download.safety_margin_percent,
+            minimum_free_space_mb=request.download.minimum_free_space_mb,
+            include_par2_by_default=request.download.include_par2_by_default,
+        )
+    )
 
 
 @app.post("/api/mega/login")
