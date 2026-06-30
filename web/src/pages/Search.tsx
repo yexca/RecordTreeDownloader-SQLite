@@ -16,20 +16,21 @@ import { api } from '../api/client';
 import type { ActorSummary, RecordSummary } from '../api/types';
 import { EmptyState } from '../components/EmptyState';
 import { RecordTable } from '../components/RecordTable';
+import { useCachedState } from '../state/pageState';
 
 type Mode = 'title' | 'actor' | 'source' | 'date' | 'undownloaded';
 
 export default function Search({ onOpenRecord }: { onOpenRecord: (id: number) => void }) {
-  const [mode, setMode] = useState<Mode>('title');
-  const [query, setQuery] = useState('');
-  const [source, setSource] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [limit, setLimit] = useState(50);
+  const [mode, setMode] = useCachedState<Mode>('search.mode', 'title');
+  const [query, setQuery] = useCachedState('search.query', '');
+  const [source, setSource] = useCachedState('search.source', '');
+  const [from, setFrom] = useCachedState('search.from', '');
+  const [to, setTo] = useCachedState('search.to', '');
+  const [limit, setLimit] = useCachedState('search.limit', 50);
   const [loading, setLoading] = useState(false);
-  const [records, setRecords] = useState<RecordSummary[]>([]);
-  const [actors, setActors] = useState<ActorSummary[]>([]);
-  const [searched, setSearched] = useState(false);
+  const [records, setRecords] = useCachedState<RecordSummary[]>('search.records', []);
+  const [actors, setActors] = useCachedState<ActorSummary[]>('search.actors', []);
+  const [searched, setSearched] = useCachedState('search.searched', false);
 
   const runSearch = async (event?: FormEvent) => {
     event?.preventDefault();

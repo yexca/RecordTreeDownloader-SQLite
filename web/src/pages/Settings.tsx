@@ -13,11 +13,11 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { IconChevronDown, IconChevronRight, IconLogin, IconLogout, IconRefresh } from '@tabler/icons-react';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { api } from '../api/client';
 import type { MegaAccountStatus, MegaCommandStatus } from '../api/types';
-import { ErrorBlock, LoadingBlock } from '../components/LoadingError';
 import { CheckBadge } from '../components/StatusBadge';
+import { useCachedState } from '../state/pageState';
 
 function CommandRow({ name, command }: { name: string; command: MegaCommandStatus }) {
   return (
@@ -32,7 +32,8 @@ function CommandRow({ name, command }: { name: string; command: MegaCommandStatu
 }
 
 export default function Settings() {
-  const [status, setStatus] = useState<MegaAccountStatus | null>(null);
+  const [status, setStatus] = useCachedState<MegaAccountStatus | null>('settings.status', null);
+  const [lastCheckedAt, setLastCheckedAt] = useCachedState<string | null>('settings.lastCheckedAt', null);
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -40,17 +41,18 @@ export default function Settings() {
   const [busy, setBusy] = useState(false);
   const [advancedOpen, { toggle: toggleAdvanced }] = useDisclosure(false);
 
-  const refresh = () => {
+  const refresh = async () => {
+    setBusy(true);
     setError(null);
-    return api
-      .megaStatus()
-      .then(setStatus)
-      .catch((err: Error) => setError(err.message));
+    try {
+      setStatus(await api.megaStatus());
+      setLastCheckedAt(new Date().toLocaleString());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'MEGAcmd status check failed');
+    } finally {
+      setBusy(false);
+    }
   };
-
-  useEffect(() => {
-    refresh();
-  }, []);
 
   const submitLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -63,6 +65,7 @@ export default function Settings() {
         auth_code: authCode.trim() || null,
       });
       setStatus(nextStatus);
+      setLastCheckedAt(new Date().toLocaleString());
       setPassword('');
       setAuthCode('');
       notifications.show({ color: 'teal', message: 'MEGAcmd login completed.' });
@@ -79,6 +82,7 @@ export default function Settings() {
     try {
       const nextStatus = await api.megaLogout();
       setStatus(nextStatus);
+      setLastCheckedAt(new Date().toLocaleString());
       notifications.show({ color: 'teal', message: 'MEGAcmd logout completed.' });
     } catch (err) {
       setError((err as Error).message);
@@ -87,12 +91,9 @@ export default function Settings() {
     }
   };
 
-  if (error && !status) return <ErrorBlock message={error} />;
-  if (!status) return <LoadingBlock />;
-
-  const loggedIn = status.login.logged_in;
-  const canLogin = status.mega_login.available && !busy;
-  const canLogout = status.mega_logout.available && !busy;
+  const loggedIn = status?.login.logged_in ?? false;
+  const canLogin = Boolean(status?.mega_login.available) && !busy;
+  const canLogout = Boolean(status?.mega_logout.available) && !busy;
 
   return (
     <Stack gap="md">
@@ -103,8 +104,8 @@ export default function Settings() {
             Configure local paths, download defaults, and MEGAcmd integration.
           </Text>
         </div>
-        <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={() => refresh()} loading={busy}>
-          Refresh
+        <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={() => void refresh()} loading={busy}>
+          Check MEGAcmd
         </Button>
       </Group>
 
@@ -114,6 +115,13 @@ export default function Settings() {
         </Alert>
       ) : null}
 
+      {!status ? (
+        <Alert color={error ? 'red' : 'blue'} title={error ? 'MEGAcmd status unavailable' : 'MEGAcmd status not checked'}>
+          {error || 'Use Check MEGAcmd to query the local MEGAcmd session. This avoids running MEGAcmd commands just by opening the page.'}
+        </Alert>
+      ) : null}
+
+      {status ? (
       <Stack p="md" className="section" gap="md">
         <Group justify="space-between" align="flex-start">
           <div>
@@ -122,6 +130,7 @@ export default function Settings() {
             </Title>
             <Text size="sm" c="dimmed">
               Login state is stored by MEGAcmd, not in the RecordTree database.
+              {lastCheckedAt ? ` Last checked ${lastCheckedAt}.` : ''}
             </Text>
           </div>
           <CheckBadge value={loggedIn ? 'pass' : 'fail'} />
@@ -196,7 +205,9 @@ export default function Settings() {
           </form>
         )}
       </Stack>
+      ) : null}
 
+      {status ? (
       <Stack p="md" className="section">
         <Group justify="space-between" align="flex-start">
           <div>
@@ -251,6 +262,7 @@ export default function Settings() {
           </Stack>
         </Collapse>
       </Stack>
+      ) : null}
     </Stack>
   );
 }

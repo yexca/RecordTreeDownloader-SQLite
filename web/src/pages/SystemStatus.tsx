@@ -1,7 +1,7 @@
 import { Button, Group, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconDatabaseExport, IconDownload, IconRefresh, IconSettings, IconStethoscope } from '@tabler/icons-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type {
   BackupSummary,
@@ -10,9 +10,10 @@ import type {
   MaintenanceSummary,
   OrphanReport,
 } from '../api/types';
-import { ErrorBlock, LoadingBlock } from '../components/LoadingError';
+import { EmptyState } from '../components/EmptyState';
 import { CheckBadge } from '../components/StatusBadge';
 import { formatBytes } from '../components/format';
+import { useCachedState } from '../state/pageState';
 
 type ActionResult =
   | { kind: 'backup'; title: string; result: BackupSummary }
@@ -33,15 +34,17 @@ const orphanLabels: Record<keyof Omit<OrphanReport, 'ok'>, string> = {
 };
 
 export default function SystemStatus() {
-  const [summary, setSummary] = useState<MaintenanceSummary | null>(null);
+  const [summary, setSummary] = useCachedState<MaintenanceSummary | null>('maintenance.summary', null);
+  const [lastCheckedAt, setLastCheckedAt] = useCachedState<string | null>('maintenance.lastCheckedAt', null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [lastResult, setLastResult] = useState<ActionResult | null>(null);
+  const [lastResult, setLastResult] = useCachedState<ActionResult | null>('maintenance.lastResult', null);
 
   const loadSummary = async () => {
     setError(null);
     try {
       setSummary(await api.maintenanceSummary());
+      setLastCheckedAt(new Date().toLocaleString());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     }
@@ -55,10 +58,6 @@ export default function SystemStatus() {
       setBusy(null);
     }
   };
-
-  useEffect(() => {
-    void loadSummary();
-  }, []);
 
   const runAction = async (kind: string, title: string, action: () => Promise<ActionResult>) => {
     setBusy(kind);
@@ -95,9 +94,6 @@ export default function SystemStatus() {
   const failingChecks = summary?.doctor.checks.filter((check) => check.status === 'fail') ?? [];
   const warningChecks = summary?.doctor.checks.filter((check) => check.status === 'warn') ?? [];
 
-  if (error) return <ErrorBlock message={error} />;
-  if (!summary) return <LoadingBlock />;
-
   return (
     <Stack gap="md">
       <Group justify="space-between" align="end">
@@ -105,6 +101,7 @@ export default function SystemStatus() {
           <Title order={2}>Maintenance</Title>
           <Text size="sm" c="dimmed">
             Diagnostics, database backup, integrity checks, and local runtime maintenance.
+            {lastCheckedAt ? ` Last diagnostics ${lastCheckedAt}.` : ''}
           </Text>
         </div>
         <Group>
@@ -116,10 +113,25 @@ export default function SystemStatus() {
           >
             Run Diagnostics
           </Button>
-          <CheckBadge value={summary.doctor_ok ? 'pass' : 'fail'} />
+          {summary ? <CheckBadge value={summary.doctor_ok ? 'pass' : 'fail'} /> : null}
         </Group>
       </Group>
 
+      {error ? (
+        <Stack p="md" className="section">
+          <Text c="red" fw={700}>
+            Diagnostics failed
+          </Text>
+          <Text size="sm">{error}</Text>
+        </Stack>
+      ) : null}
+
+      {!summary ? (
+        <Stack p="md" className="section">
+          <EmptyState message="Run diagnostics to check paths, database health, backups, and MEGAcmd availability." />
+        </Stack>
+      ) : (
+      <>
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }}>
         <Metric label="Overall" value={summary.doctor_ok ? 'Healthy' : 'Needs attention'} status={summary.doctor_ok ? 'pass' : 'fail'} />
         <Metric label="Failures" value={failingChecks.length} />
@@ -246,6 +258,8 @@ export default function SystemStatus() {
       </SimpleGrid>
 
       <CheckTable title="Doctor Checks" checks={summary.doctor.checks} striped />
+      </>
+      )}
     </Stack>
   );
 }

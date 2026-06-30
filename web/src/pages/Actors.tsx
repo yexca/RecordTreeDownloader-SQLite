@@ -19,6 +19,7 @@ import type { ActorSummary, RecordSummary } from '../api/types';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorBlock, LoadingBlock } from '../components/LoadingError';
 import { RecordTable } from '../components/RecordTable';
+import { useCachedState } from '../state/pageState';
 import RecordDetail from './RecordDetail';
 
 const ACTOR_FETCH_LIMIT = 500;
@@ -28,17 +29,17 @@ const DEFAULT_RECORDS_PER_PAGE = 25;
 type SearchMode = 'name' | 'id';
 
 export default function Actors() {
-  const [query, setQuery] = useState('');
-  const [searchMode, setSearchMode] = useState<SearchMode>('name');
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(DEFAULT_ACTORS_PER_PAGE);
-  const [recordPage, setRecordPage] = useState(1);
-  const [recordsPerPage, setRecordsPerPage] = useState(DEFAULT_RECORDS_PER_PAGE);
-  const [actors, setActors] = useState<ActorSummary[]>([]);
-  const [selectedActor, setSelectedActor] = useState<ActorSummary | null>(null);
-  const [records, setRecords] = useState<RecordSummary[]>([]);
-  const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
-  const [loadingActors, setLoadingActors] = useState(true);
+  const [query, setQuery] = useCachedState('actors.query', '');
+  const [searchMode, setSearchMode] = useCachedState<SearchMode>('actors.searchMode', 'name');
+  const [page, setPage] = useCachedState('actors.page', 1);
+  const [perPage, setPerPage] = useCachedState('actors.perPage', DEFAULT_ACTORS_PER_PAGE);
+  const [recordPage, setRecordPage] = useCachedState('actors.recordPage', 1);
+  const [recordsPerPage, setRecordsPerPage] = useCachedState('actors.recordsPerPage', DEFAULT_RECORDS_PER_PAGE);
+  const [actors, setActors] = useCachedState<ActorSummary[]>('actors.actors', []);
+  const [selectedActor, setSelectedActor] = useCachedState<ActorSummary | null>('actors.selectedActor', null);
+  const [records, setRecords] = useCachedState<RecordSummary[]>('actors.records', []);
+  const [selectedRecordId, setSelectedRecordId] = useCachedState<number | null>('actors.selectedRecordId', null);
+  const [loadingActors, setLoadingActors] = useState(actors.length === 0);
   const [loadingRecords, setLoadingRecords] = useState(false);
   const [actorError, setActorError] = useState<string | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
@@ -89,7 +90,7 @@ export default function Actors() {
   };
 
   useEffect(() => {
-    loadActors();
+    if (actors.length === 0) loadActors();
     // Initial load only; search form and refresh button control later requests.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

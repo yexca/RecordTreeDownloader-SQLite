@@ -20,6 +20,7 @@ import {
   IconPlayerPlay,
   IconSearch,
   IconSettings,
+  IconTool,
   IconSun,
 } from '@tabler/icons-react';
 import Actors from './pages/Actors';
@@ -173,7 +174,7 @@ export default function App() {
         />
         <NavLink
           label="Maintenance"
-          leftSection={<IconSettings size={18} />}
+          leftSection={<IconTool size={18} />}
           active={route === 'maintenance'}
           onClick={() => navigate('/maintenance')}
         />

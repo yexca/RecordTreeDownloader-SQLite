@@ -20,6 +20,7 @@ import type { ImportErrorPage, ImportJob, ImportPage, ImportResult, Job, JobProg
 import { EmptyState } from '../components/EmptyState';
 import { PlainStatusBadge } from '../components/StatusBadge';
 import { formatBytes, formatText } from '../components/format';
+import { useCachedState } from '../state/pageState';
 
 const ACCEPTED_EXTENSIONS = ['.xlsx', '.xlsm', '.json', '.db', '.sqlite', '.sqlite3'];
 
@@ -87,13 +88,13 @@ function asImportJob(job: Job): ImportJob {
 export default function ImportPage() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [job, setJob] = useState<ImportJob | null>(null);
+  const [job, setJob] = useCachedState<ImportJob | null>('import.job', null);
   const [error, setError] = useState<string | null>(null);
-  const [history, setHistory] = useState<ImportPage | null>(null);
+  const [history, setHistory] = useCachedState<ImportPage | null>('import.history', null);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [historyPage, setHistoryPage] = useState(1);
-  const [selectedImportId, setSelectedImportId] = useState<number | null>(null);
-  const [importErrors, setImportErrors] = useState<ImportErrorPage | null>(null);
+  const [historyPage, setHistoryPage] = useCachedState('import.historyPage', 1);
+  const [selectedImportId, setSelectedImportId] = useCachedState<number | null>('import.selectedImportId', null);
+  const [importErrors, setImportErrors] = useCachedState<ImportErrorPage | null>('import.importErrors', null);
   const timerRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 

@@ -18,6 +18,7 @@ import type { DownloadItemDetail, DownloadPage, Job } from '../api/types';
 import { EmptyState } from '../components/EmptyState';
 import { PlainStatusBadge } from '../components/StatusBadge';
 import { formatBytes, formatText, previewUrl } from '../components/format';
+import { useCachedState } from '../state/pageState';
 
 function outputText(job: Job) {
   return job.events
@@ -36,11 +37,11 @@ const RESUMABLE_STATUSES = new Set(['interrupted', 'failed', 'cancelled', 'block
 
 export default function Downloads() {
   const [activeJobs, setActiveJobs] = useState<Job[]>([]);
-  const [history, setHistory] = useState<DownloadPage | null>(null);
-  const [items, setItems] = useState<DownloadItemDetail[]>([]);
-  const [downloadLog, setDownloadLog] = useState<string | null>(null);
-  const [selectedDownloadId, setSelectedDownloadId] = useState<number | null>(null);
-  const [page, setPage] = useState(1);
+  const [history, setHistory] = useCachedState<DownloadPage | null>('downloads.history', null);
+  const [items, setItems] = useCachedState<DownloadItemDetail[]>('downloads.items', []);
+  const [downloadLog, setDownloadLog] = useCachedState<string | null>('downloads.downloadLog', null);
+  const [selectedDownloadId, setSelectedDownloadId] = useCachedState<number | null>('downloads.selectedDownloadId', null);
+  const [page, setPage] = useCachedState('downloads.page', 1);
   const [error, setError] = useState<string | null>(null);
   const [resumingId, setResumingId] = useState<number | null>(null);
 

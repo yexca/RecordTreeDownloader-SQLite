@@ -19,6 +19,7 @@ import type { PlatformSummary, RecordSummary } from '../api/types';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorBlock, LoadingBlock } from '../components/LoadingError';
 import { RecordTable } from '../components/RecordTable';
+import { useCachedState } from '../state/pageState';
 import RecordDetail from './RecordDetail';
 
 const PLATFORM_FETCH_LIMIT = 500;
@@ -28,17 +29,17 @@ const DEFAULT_RECORDS_PER_PAGE = 25;
 type SearchMode = 'name' | 'id';
 
 export default function Platform() {
-  const [query, setQuery] = useState('');
-  const [searchMode, setSearchMode] = useState<SearchMode>('name');
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(DEFAULT_PLATFORMS_PER_PAGE);
-  const [recordPage, setRecordPage] = useState(1);
-  const [recordsPerPage, setRecordsPerPage] = useState(DEFAULT_RECORDS_PER_PAGE);
-  const [platforms, setPlatforms] = useState<PlatformSummary[]>([]);
-  const [selectedPlatform, setSelectedPlatform] = useState<PlatformSummary | null>(null);
-  const [records, setRecords] = useState<RecordSummary[]>([]);
-  const [selectedRecordId, setSelectedRecordId] = useState<number | null>(null);
-  const [loadingPlatforms, setLoadingPlatforms] = useState(true);
+  const [query, setQuery] = useCachedState('platform.query', '');
+  const [searchMode, setSearchMode] = useCachedState<SearchMode>('platform.searchMode', 'name');
+  const [page, setPage] = useCachedState('platform.page', 1);
+  const [perPage, setPerPage] = useCachedState('platform.perPage', DEFAULT_PLATFORMS_PER_PAGE);
+  const [recordPage, setRecordPage] = useCachedState('platform.recordPage', 1);
+  const [recordsPerPage, setRecordsPerPage] = useCachedState('platform.recordsPerPage', DEFAULT_RECORDS_PER_PAGE);
+  const [platforms, setPlatforms] = useCachedState<PlatformSummary[]>('platform.platforms', []);
+  const [selectedPlatform, setSelectedPlatform] = useCachedState<PlatformSummary | null>('platform.selectedPlatform', null);
+  const [records, setRecords] = useCachedState<RecordSummary[]>('platform.records', []);
+  const [selectedRecordId, setSelectedRecordId] = useCachedState<number | null>('platform.selectedRecordId', null);
+  const [loadingPlatforms, setLoadingPlatforms] = useState(platforms.length === 0);
   const [loadingRecords, setLoadingRecords] = useState(false);
   const [platformError, setPlatformError] = useState<string | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
@@ -89,7 +90,7 @@ export default function Platform() {
   };
 
   useEffect(() => {
-    loadPlatforms();
+    if (platforms.length === 0) loadPlatforms();
     // Initial load only; search form and refresh button control later requests.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -18,6 +18,7 @@ import { api } from '../api/client';
 import type { DownloadedStatus, RecordPage } from '../api/types';
 import { EmptyState } from '../components/EmptyState';
 import { RecordTable } from '../components/RecordTable';
+import { useCachedState } from '../state/pageState';
 
 type DownloadFilter = DownloadedStatus | 'pending' | '';
 
@@ -30,18 +31,18 @@ const emptyPage: RecordPage = {
 };
 
 export default function Records({ onOpenRecord }: { onOpenRecord: (id: number) => void }) {
-  const [recordId, setRecordId] = useState('');
-  const [title, setTitle] = useState('');
-  const [actor, setActor] = useState('');
-  const [source, setSource] = useState('');
-  const [dateFrom, setDateFrom] = useState<string | null>(null);
-  const [dateTo, setDateTo] = useState<string | null>(null);
-  const [downloadFilter, setDownloadFilter] = useState<DownloadFilter>('');
-  const [pageSize, setPageSize] = useState(50);
-  const [page, setPage] = useState(1);
-  const [result, setResult] = useState<RecordPage>(emptyPage);
+  const [recordId, setRecordId] = useCachedState('records.recordId', '');
+  const [title, setTitle] = useCachedState('records.title', '');
+  const [actor, setActor] = useCachedState('records.actor', '');
+  const [source, setSource] = useCachedState('records.source', '');
+  const [dateFrom, setDateFrom] = useCachedState<string | null>('records.dateFrom', null);
+  const [dateTo, setDateTo] = useCachedState<string | null>('records.dateTo', null);
+  const [downloadFilter, setDownloadFilter] = useCachedState<DownloadFilter>('records.downloadFilter', '');
+  const [pageSize, setPageSize] = useCachedState('records.pageSize', 50);
+  const [page, setPage] = useCachedState('records.page', 1);
+  const [result, setResult] = useCachedState<RecordPage>('records.result', emptyPage);
   const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
+  const [searched, setSearched] = useCachedState('records.searched', false);
 
   const loadRecords = async (nextPage = page) => {
     setLoading(true);
@@ -101,7 +102,7 @@ export default function Records({ onOpenRecord }: { onOpenRecord: (id: number) =
   };
 
   useEffect(() => {
-    void loadRecords(1);
+    if (!searched) void loadRecords(1);
     // Initial load only; searches after edits are explicit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
