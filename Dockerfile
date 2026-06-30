@@ -30,6 +30,6 @@ RUN python -m pip install -e ".[web]"
 
 RUN mkdir -p env downloads logs files/uploads
 
-EXPOSE 8000
+EXPOSE 7647
 
-CMD ["uvicorn", "recordtree.web.api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "recordtree.web.api:app", "--host", "0.0.0.0", "--port", "7647"]

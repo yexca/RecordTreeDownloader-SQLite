@@ -26,6 +26,6 @@ RUN cd web && npm ci
 
 COPY . .
 
-EXPOSE 8000 5173
+EXPOSE 7647 5173
 
 CMD ["sleep", "infinity"]

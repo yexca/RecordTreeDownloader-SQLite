@@ -15,7 +15,7 @@ pytest
 Start the FastAPI backend:
 
 ```bash
-uvicorn recordtree.web.api:app --host 127.0.0.1 --port 8000
+uvicorn recordtree.web.api:app --host 127.0.0.1 --port 7647
 ```
 
 Start the Vite frontend in another terminal:

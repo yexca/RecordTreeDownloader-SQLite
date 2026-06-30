@@ -5,7 +5,7 @@ services:
     image: recordtree-downloader-sqlite-web:dev
     container_name: recordtree-web
     ports:
-      - "8000:8000"
+      - "7647:7647"
     environment:
       TZ: Asia/Tokyo
     volumes:

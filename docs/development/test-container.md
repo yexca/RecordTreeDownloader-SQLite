@@ -37,7 +37,7 @@ docker compose -f docker-compose.dev.yml exec recordtree-dev sh -c "cd web && np
 Open two shells:
 
 ```bash
-docker compose -f docker-compose.dev.yml exec recordtree-dev uvicorn recordtree.web.api:app --host 0.0.0.0 --port 8000 --reload
+docker compose -f docker-compose.dev.yml exec recordtree-dev uvicorn recordtree.web.api:app --host 0.0.0.0 --port 7647 --reload
 ```
 
 ```bash

@@ -8,7 +8,7 @@ services:
     working_dir: /workspace
     command: sleep infinity
     ports:
-      - "8001:8000"
+      - "7647:7647"
       - "5173:5173"
     environment:
       TZ: Asia/Tokyo
