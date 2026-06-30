@@ -15,6 +15,7 @@ Default runtime paths:
 - Downloads: `downloads/`
 - Logs: `logs/`
 - Import error CSVs: `logs/import_<import_id>_errors.csv`
+- Download output logs: `logs/downloads/download_<download_id>.log`
 
 ## Import Data
 
@@ -67,3 +68,5 @@ recordtree download --actor 12 --count 5 --yes
 ```
 
 By default, `.par2` files are excluded. Use `--include-par2` to include them.
+
+Each download attempt records item status in SQLite. When MEGAcmd runs, its streamed output is also written to `logs/downloads/download_<download_id>.log`.

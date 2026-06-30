@@ -9,7 +9,7 @@ Use this container when you want one Linux environment with both Python developm
 - The official Debian 12 MEGAcmd package
 - A source bind mount so local edits are visible inside the container
 - A named volume for `/workspace/web/node_modules`
-- A named volume for `/root`, which preserves MEGAcmd login state
+- A host bind mount from `./env/megacmd-home-dev` to `/root`, which preserves MEGAcmd login state
 
 ## Build
 
@@ -75,4 +75,4 @@ Stop the container with:
 docker compose -f docker-compose.dev.yml down
 ```
 
-Use `docker compose -f docker-compose.dev.yml down -v` only when you intentionally want to delete the Node dependency volume and MEGAcmd login volume.
+Use `docker compose -f docker-compose.dev.yml down -v` only when you intentionally want to delete the Node dependency volume. MEGAcmd login state is stored in the host directory `./env/megacmd-home-dev`; remove that directory only when you intentionally want to reset the dev-container MEGAcmd session.

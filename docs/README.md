@@ -18,6 +18,6 @@ This documentation is organized by audience and stability.
 ## Development
 
 - [Local development](development/local.md)
-- [Docker development](development/docker.md)
+- [Docker WebUI runtime](development/docker.md)
 - [Development test container](development/test-container.md)
 - [CLI design documents](development/cli-design/README.md)

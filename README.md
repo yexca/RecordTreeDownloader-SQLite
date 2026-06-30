@@ -61,7 +61,8 @@ Then initialize and check the environment:
 
 - Do not commit real exports, downloaded files, MEGA credentials, or runtime databases.
 - Keep sensitive manual-test data under `real_test/`; that path is ignored by Git.
-- In Docker, MEGAcmd login state is stored in the `megacmd-home` named volume.
+- In Docker WebUI runs, MEGAcmd login state is stored under `env/megacmd-home`.
+- Download output logs are stored under `logs/downloads/`.
 
 ## Development
 

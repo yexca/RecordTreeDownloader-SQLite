@@ -42,7 +42,7 @@ The Compose file mounts these host directories:
 - `./logs:/app/logs`
 - `./files:/app/files`
 
-Runtime data survives container recreation because these paths live on the host. MEGAcmd login state survives through `./env/megacmd-home`.
+Runtime data survives container recreation because these paths live on the host. MEGAcmd login state survives through `./env/megacmd-home`. Download output logs are stored under `./logs/downloads/`.
 
 ## Useful Commands
 

@@ -1,6 +1,8 @@
-# Docker Development Guide
+# Docker WebUI Runtime Guide
 
-This project can run the FastAPI backend and built React WebUI from one Docker container. The image also installs the official Debian 12 MEGAcmd package so download workflows use the same `mega-*` commands expected by the CLI.
+This guide covers the production-style Docker WebUI container defined by `Dockerfile` and `docker-compose.yml`. It builds the React frontend, serves the built assets from FastAPI, and installs the official Debian 12 MEGAcmd package so download workflows use the same `mega-*` commands expected by the CLI.
+
+For the bind-mounted development/test container, use [Development test container](test-container.md) instead.
 
 ## Build And Start
 
@@ -39,7 +41,7 @@ The compose file mounts these host directories into the container:
 
 - `./env:/app/env` for config and SQLite database
 - `./downloads:/app/downloads` for downloaded files
-- `./logs:/app/logs` for import error CSVs and logs
+- `./logs:/app/logs` for import error CSVs, backups, and download logs such as `logs/downloads/download_<download_id>.log`
 - `./files:/app/files` for uploaded import files
 
 Runtime data survives container recreation because these paths live on the host. The MEGAcmd login state survives through `./env/megacmd-home`.

@@ -35,4 +35,10 @@ The WebUI builds a download plan before starting MEGAcmd. You can choose:
 - Output directory
 - Only undownloaded links
 
-Downloads run as background jobs. The UI polls job status and displays captured MEGAcmd output.
+Downloads run as background jobs. The UI polls job status and displays captured MEGAcmd output for active jobs. Completed download details also expose persisted MEGAcmd output when a log file is available.
+
+Download output logs are written under:
+
+```text
+logs/downloads/download_<download_id>.log
+```
