@@ -141,6 +141,8 @@ export const api = {
   download: (downloadId: number) => request<DownloadDetail>(`/api/downloads/${downloadId}`),
   downloadItems: (downloadId: number) =>
     request<DownloadItemDetail[]>(`/api/downloads/${downloadId}/items`),
+  downloadLog: (downloadId: number) =>
+    request<{ text: string }>(`/api/downloads/${downloadId}/log`),
   resumeDownload: (downloadId: number) =>
     request<JobCreateResponse>(`/api/downloads/${downloadId}/resume`, {
       method: 'POST',

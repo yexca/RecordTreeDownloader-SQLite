@@ -459,6 +459,10 @@ async def test_download_job_records_output_chunks(
             for event in job["events"]
             if event["type"] == "output"
         ] == ["downloading ", "100%\n"]
+        detail = (await client.get(f"/api/downloads/{job['result']['download_id']}")).json()
+        assert detail["log_path"]
+        log = (await client.get(f"/api/downloads/{job['result']['download_id']}/log")).json()
+        assert log["text"] == "downloading 100%\n"
 
         events = await client.get(f"/api/jobs/{response.json()['job_id']}/events")
         assert "event: output" in events.text
@@ -496,6 +500,7 @@ async def test_download_history_detail_items_and_job_list_endpoints(
         assert detail["id"] == download_id
         assert detail["actor"] == "API Actor"
         assert "request_json" in detail
+        assert "log_path" in detail
 
         items = (await client.get(f"/api/downloads/{download_id}/items")).json()
         assert len(items) == 1

@@ -792,6 +792,9 @@ class RecordTreeApp:
 
             plan.output_dir.mkdir(parents=True, exist_ok=True)
             download_id = downloads.create_from_plan(plan, "planned", request_json=request_json)
+            log_path = _download_log_path(app_config.logs_dir, download_id)
+            downloads.set_download_log_path(download_id, log_path)
+            log_callback = _download_output_logger(log_path, output_callback)
             completed = 0
             failed = 0
             last_exit_code: int | None = None
@@ -803,7 +806,7 @@ class RecordTreeApp:
                         mega_get,
                         link.mega_url,
                         plan.output_dir,
-                        output_callback=output_callback,
+                        output_callback=log_callback,
                     )
                 except Exception as error:
                     result = MegaCommandResult(1, "", str(error))
@@ -885,6 +888,22 @@ class RecordTreeApp:
             return result
         finally:
             conn.close()
+
+    def get_download_log(self, download_id: int) -> str:
+        detail = self.get_download(download_id)
+        if not detail.log_path:
+            raise NotFoundError(f"Download log not found: {download_id}")
+        app_config = config_module.load_config(Path("env/config.toml"))
+        logs_dir = app_config.logs_dir.resolve()
+        log_path = Path(detail.log_path).expanduser().resolve()
+        try:
+            log_path.relative_to(logs_dir)
+        except ValueError as error:
+            raise ValidationError(f"Download {download_id} has an invalid log path.") from error
+        if not log_path.is_file():
+            raise NotFoundError(f"Download log file is missing: {download_id}")
+        with log_path.open("r", encoding="utf-8", errors="replace", newline="") as handle:
+            return handle.read()
 
     def get_download_resume_request(self, download_id: int) -> dict[str, object]:
         detail = self.get_download(download_id)
@@ -1247,6 +1266,25 @@ def _download_request_json(
         ensure_ascii=False,
         sort_keys=True,
     )
+
+
+def _download_log_path(logs_dir: Path, download_id: int) -> Path:
+    return logs_dir / "downloads" / f"download_{download_id}.log"
+
+
+def _download_output_logger(
+    log_path: Path,
+    output_callback: Callable[[str], None] | None,
+) -> Callable[[str], None]:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def callback(chunk: str) -> None:
+        with log_path.open("a", encoding="utf-8", errors="replace", newline="") as handle:
+            handle.write(chunk)
+        if output_callback is not None:
+            output_callback(chunk)
+
+    return callback
 
 
 def _interrupted_message() -> str:

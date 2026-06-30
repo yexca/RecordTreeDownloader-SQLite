@@ -154,6 +154,11 @@ def download_items(download_id: int) -> list[dict[str, object]]:
     return _serialize(RecordTreeApp().list_download_items(download_id))
 
 
+@app.get("/api/downloads/{download_id}/log")
+def download_log(download_id: int) -> dict[str, str]:
+    return {"text": RecordTreeApp().get_download_log(download_id)}
+
+
 @app.get("/api/jobs")
 def jobs(kind: Literal["import", "download"] | None = None, active: bool | None = None) -> list[dict[str, object]]:
     return _serialize([job_manager.serialize(job) for job in job_manager.list(kind=kind, active=active)])

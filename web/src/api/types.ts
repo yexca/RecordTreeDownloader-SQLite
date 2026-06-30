@@ -211,6 +211,7 @@ export interface DownloadDetail {
   mega_exit_code: number | null;
   message: string | null;
   request_json: string | null;
+  log_path: string | null;
   item_count: number;
   completed_count: number;
   failed_count: number;

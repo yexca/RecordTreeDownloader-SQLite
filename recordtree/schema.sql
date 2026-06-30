@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS downloads (
     mega_exit_code INTEGER,
     message TEXT,
     request_json TEXT,
+    log_path TEXT,
     FOREIGN KEY (record_group_id) REFERENCES record_groups(id) ON DELETE CASCADE
 );
 

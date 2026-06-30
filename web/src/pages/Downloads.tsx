@@ -38,6 +38,7 @@ export default function Downloads() {
   const [activeJobs, setActiveJobs] = useState<Job[]>([]);
   const [history, setHistory] = useState<DownloadPage | null>(null);
   const [items, setItems] = useState<DownloadItemDetail[]>([]);
+  const [downloadLog, setDownloadLog] = useState<string | null>(null);
   const [selectedDownloadId, setSelectedDownloadId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
@@ -94,15 +95,23 @@ export default function Downloads() {
     if (selectedDownloadId === downloadId) {
       setSelectedDownloadId(null);
       setItems([]);
+      setDownloadLog(null);
       return;
     }
     setSelectedDownloadId(downloadId);
+    setDownloadLog(null);
     try {
-      setItems(await api.downloadItems(downloadId));
+      const nextItems = await api.downloadItems(downloadId);
+      setItems(nextItems);
+      const download = history?.items.find((item) => item.id === downloadId);
+      if (download?.log_path) {
+        const log = await api.downloadLog(downloadId);
+        setDownloadLog(log.text);
+      }
     } catch (err) {
       notifications.show({
         color: 'red',
-        title: 'Download items unavailable',
+        title: 'Download detail unavailable',
         message: err instanceof Error ? err.message : 'Unknown error',
       });
     }
@@ -309,6 +318,17 @@ export default function Downloads() {
               readOnly
               className="log-output"
               value={selectedDownload.request_json}
+            />
+          )}
+          {selectedDownload.log_path && (
+            <Textarea
+              label="MEGAcmd output log"
+              autosize
+              minRows={5}
+              maxRows={14}
+              readOnly
+              className="log-output"
+              value={downloadLog ?? 'Loading MEGAcmd output log...'}
             />
           )}
           {items.length === 0 ? (

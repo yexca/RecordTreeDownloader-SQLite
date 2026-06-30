@@ -39,6 +39,8 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     }
     if "request_json" not in download_columns:
         conn.execute("ALTER TABLE downloads ADD COLUMN request_json TEXT")
+    if "log_path" not in download_columns:
+        conn.execute("ALTER TABLE downloads ADD COLUMN log_path TEXT")
 
 
 @contextmanager

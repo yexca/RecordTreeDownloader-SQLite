@@ -431,14 +431,15 @@ class DownloadRepository:
         status: str,
         message: str | None = None,
         request_json: str | None = None,
+        log_path: Path | None = None,
     ) -> int:
         cursor = self.conn.execute(
             f"""
             INSERT INTO downloads (
                 record_group_id, requested_at, output_dir, selected_bytes,
-                free_bytes_before, status, mega_exit_code, message, request_json
+                free_bytes_before, status, mega_exit_code, message, request_json, log_path
             )
-            VALUES (?, {utc_now_sql()}, ?, ?, ?, ?, NULL, ?, ?)
+            VALUES (?, {utc_now_sql()}, ?, ?, ?, ?, NULL, ?, ?, ?)
             """,
             (
                 record_group_id,
@@ -448,9 +449,16 @@ class DownloadRepository:
                 status,
                 message,
                 request_json,
+                str(log_path) if log_path is not None else None,
             ),
         )
         return int(cursor.lastrowid)
+
+    def set_download_log_path(self, download_id: int, log_path: Path) -> None:
+        self.conn.execute(
+            "UPDATE downloads SET log_path = ? WHERE id = ?",
+            (str(log_path), download_id),
+        )
 
     def update_download_status(
         self,
@@ -513,6 +521,7 @@ class DownloadRepository:
         status: str,
         message: str | None = None,
         request_json: str | None = None,
+        log_path: Path | None = None,
     ) -> int:
         return self.create_download(
             record_group_id=plan.record_group_id,
@@ -522,6 +531,7 @@ class DownloadRepository:
             status=status,
             message=message,
             request_json=request_json,
+            log_path=log_path,
         )
 
     def mark_interrupted_downloads(self, message: str) -> int:
@@ -758,6 +768,7 @@ def _download_detail(row: sqlite3.Row) -> DownloadDetail:
         mega_exit_code=row["mega_exit_code"],
         message=row["message"],
         request_json=row["request_json"],
+        log_path=row["log_path"],
         item_count=int(row["item_count"] or 0),
         completed_count=int(row["completed_count"] or 0),
         failed_count=int(row["failed_count"] or 0),
