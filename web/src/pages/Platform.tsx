@@ -13,7 +13,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconRefresh, IconSearch } from '@tabler/icons-react';
-import { FormEvent, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { PlatformSummary, RecordSummary } from '../api/types';
 import { EmptyState } from '../components/EmptyState';
@@ -22,7 +22,6 @@ import { RecordTable } from '../components/RecordTable';
 import { useCachedState } from '../state/pageState';
 import RecordDetail from './RecordDetail';
 
-const PLATFORM_FETCH_LIMIT = 500;
 const DEFAULT_PLATFORMS_PER_PAGE = 25;
 const RECORD_FETCH_LIMIT = 500;
 const DEFAULT_RECORDS_PER_PAGE = 25;
@@ -36,27 +35,36 @@ export default function Platform() {
   const [recordPage, setRecordPage] = useCachedState('platform.recordPage', 1);
   const [recordsPerPage, setRecordsPerPage] = useCachedState('platform.recordsPerPage', DEFAULT_RECORDS_PER_PAGE);
   const [platforms, setPlatforms] = useCachedState<PlatformSummary[]>('platform.platforms', []);
+  const [totalPlatforms, setTotalPlatforms] = useCachedState('platform.totalPlatforms', 0);
+  const [totalPlatformPages, setTotalPlatformPages] = useCachedState('platform.totalPlatformPages', 0);
   const [selectedPlatform, setSelectedPlatform] = useCachedState<PlatformSummary | null>('platform.selectedPlatform', null);
   const [records, setRecords] = useCachedState<RecordSummary[]>('platform.records', []);
   const [selectedRecordId, setSelectedRecordId] = useCachedState<number | null>('platform.selectedRecordId', null);
   const [loadingPlatforms, setLoadingPlatforms] = useState(platforms.length === 0);
   const [loadingRecords, setLoadingRecords] = useState(false);
+  const [loadingCounts, setLoadingCounts] = useState(false);
   const [platformError, setPlatformError] = useState<string | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
 
-  const loadPlatforms = async (event?: FormEvent) => {
-    event?.preventDefault();
+  const loadPlatformPage = async (nextPage = page, nextPerPage = perPage) => {
     setLoadingPlatforms(true);
     setPlatformError(null);
     try {
       const id = Number(query.trim());
-      const nextPlatforms =
-        searchMode === 'id' && Number.isInteger(id) && id > 0
-          ? [await api.platform(id)]
-          : await api.platforms(searchMode === 'name' ? query : '', PLATFORM_FETCH_LIMIT);
-      setPlatforms(nextPlatforms);
-      setPage(1);
-      if (selectedPlatform && !nextPlatforms.some((platform) => platform.id === selectedPlatform.id)) {
+      if (searchMode === 'id' && Number.isInteger(id) && id > 0) {
+        const nextPlatforms = [await api.platform(id)];
+        setPlatforms(nextPlatforms);
+        setTotalPlatforms(nextPlatforms.length);
+        setTotalPlatformPages(1);
+        setPage(1);
+        return;
+      }
+      const result = await api.platformPage(searchMode === 'name' ? query : '', nextPage, nextPerPage);
+      setPlatforms(result.items);
+      setTotalPlatforms(result.total);
+      setTotalPlatformPages(result.total_pages);
+      setPage(result.page);
+      if (selectedPlatform && !result.items.some((platform) => platform.id === selectedPlatform.id)) {
         setSelectedPlatform(null);
         setRecords([]);
         setSelectedRecordId(null);
@@ -90,21 +98,56 @@ export default function Platform() {
   };
 
   useEffect(() => {
-    if (platforms.length === 0) loadPlatforms();
+    if (platforms.length === 0) void loadPlatformPage(1);
     // Initial load only; search form and refresh button control later requests.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (platforms.length === 0) return;
+    let cancelled = false;
+    const refreshCounts = async () => {
+      setLoadingCounts(true);
+      try {
+        const counts = await api.platformUndownloadedCounts(platforms.map((platform) => platform.id));
+        if (!cancelled) {
+          setPlatforms((current) =>
+            current.map((platform) => ({
+              ...platform,
+              undownloaded_count: counts[String(platform.id)] ?? platform.undownloaded_count,
+            })),
+          );
+          setSelectedPlatform((current) =>
+            current
+              ? {
+                  ...current,
+                  undownloaded_count: counts[String(current.id)] ?? current.undownloaded_count,
+                }
+              : current,
+          );
+        }
+      } catch {
+        // Counts are secondary; the main directory stays usable.
+      } finally {
+        if (!cancelled) setLoadingCounts(false);
+      }
+    };
+    void refreshCounts();
+    return () => {
+      cancelled = true;
+    };
+  }, [platforms.map((platform) => platform.id).join(',')]);
 
   const trimmedQuery = query.trim();
   const visiblePlatforms =
     searchMode === 'id' && trimmedQuery
       ? platforms.filter((platform) => String(platform.id).includes(trimmedQuery))
       : platforms;
-  const totalPages = Math.max(1, Math.ceil(visiblePlatforms.length / perPage));
+  const totalPages = Math.max(1, searchMode === 'id' ? 1 : totalPlatformPages);
   const safePage = Math.min(page, totalPages);
-  const pagePlatforms = visiblePlatforms.slice((safePage - 1) * perPage, safePage * perPage);
-  const rangeStart = visiblePlatforms.length === 0 ? 0 : (safePage - 1) * perPage + 1;
-  const rangeEnd = Math.min(safePage * perPage, visiblePlatforms.length);
+  const pagePlatforms = visiblePlatforms;
+  const rangeStart = totalPlatforms === 0 ? 0 : (safePage - 1) * perPage + 1;
+  const rangeEnd = Math.min(safePage * perPage, totalPlatforms);
   const totalRecordPages = Math.max(1, Math.ceil(records.length / recordsPerPage));
   const safeRecordPage = Math.min(recordPage, totalRecordPages);
   const pageRecords = records.slice(
@@ -127,7 +170,13 @@ export default function Platform() {
 
       <div className="actors-layout">
         <Stack className="section actor-directory" gap={0}>
-          <form onSubmit={loadPlatforms}>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              setPage(1);
+              void loadPlatformPage(1);
+            }}
+          >
             <Stack gap="sm" p="md" className="actor-directory-toolbar">
               <Group justify="space-between" align="start" wrap="nowrap">
                 <div>
@@ -135,7 +184,7 @@ export default function Platform() {
                     Directory
                   </Title>
                   <Text size="xs" c="dimmed">
-                    {visiblePlatforms.length} shown, {platforms.length} loaded
+                    {platforms.length} shown, {totalPlatforms} total{loadingCounts ? ', counts loading' : ''}
                   </Text>
                 </div>
                 <Tooltip label="Refresh platforms">
@@ -144,7 +193,7 @@ export default function Platform() {
                     size={32}
                     aria-label="Refresh platforms"
                     loading={loadingPlatforms}
-                    onClick={() => loadPlatforms()}
+                    onClick={() => loadPlatformPage(page)}
                   >
                     <IconRefresh size={16} />
                   </ActionIcon>
@@ -230,14 +279,16 @@ export default function Platform() {
             <Stack className="actor-directory-footer" gap="xs">
               <Group justify="space-between" align="center" wrap="nowrap">
                 <Text size="xs" c="dimmed">
-                  {rangeStart}-{rangeEnd} of {visiblePlatforms.length}
+                  {rangeStart}-{rangeEnd} of {totalPlatforms}
                 </Text>
                 <Select
                   aria-label="Platforms per page"
                   value={String(perPage)}
                   onChange={(value) => {
-                    setPerPage(Number(value) || DEFAULT_PLATFORMS_PER_PAGE);
+                    const nextPerPage = Number(value) || DEFAULT_PLATFORMS_PER_PAGE;
+                    setPerPage(nextPerPage);
                     setPage(1);
+                    void loadPlatformPage(1, nextPerPage);
                   }}
                   data={[
                     { value: '10', label: '10 / page' },
@@ -253,7 +304,10 @@ export default function Platform() {
               <Pagination
                 total={totalPages}
                 value={safePage}
-                onChange={setPage}
+                onChange={(nextPage) => {
+                  setPage(nextPage);
+                  void loadPlatformPage(nextPage);
+                }}
                 size="xs"
                 siblings={0}
                 boundaries={1}

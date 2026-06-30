@@ -263,6 +263,16 @@ def actors(query: str = "", limit: int = 50) -> list[dict[str, object]]:
     return _serialize(RecordTreeApp().search_actor(query, limit))
 
 
+@app.get("/api/actors/page")
+def actor_page(query: str = "", page: int = 1, page_size: int = 50) -> dict[str, object]:
+    return _serialize(RecordTreeApp().list_actor_page(query, page=page, page_size=page_size))
+
+
+@app.get("/api/actors/undownloaded-counts")
+def actor_undownloaded_counts(ids: str = "") -> dict[str, int]:
+    return {str(key): value for key, value in RecordTreeApp().actor_undownloaded_counts(_parse_ids(ids)).items()}
+
+
 @app.get("/api/actors/{actor_id}")
 def actor(actor_id: int) -> dict[str, object]:
     return _serialize(RecordTreeApp().get_actor(actor_id))
@@ -276,6 +286,16 @@ def actor_records(actor_id: int, limit: int = 50) -> list[dict[str, object]]:
 @app.get("/api/platforms")
 def platforms(query: str = "", limit: int = 50) -> list[dict[str, object]]:
     return _serialize(RecordTreeApp().search_platform(query, limit))
+
+
+@app.get("/api/platforms/page")
+def platform_page(query: str = "", page: int = 1, page_size: int = 50) -> dict[str, object]:
+    return _serialize(RecordTreeApp().list_platform_page(query, page=page, page_size=page_size))
+
+
+@app.get("/api/platforms/undownloaded-counts")
+def platform_undownloaded_counts(ids: str = "") -> dict[str, int]:
+    return {str(key): value for key, value in RecordTreeApp().platform_undownloaded_counts(_parse_ids(ids)).items()}
 
 
 @app.get("/api/platforms/{source_id}")
@@ -393,6 +413,20 @@ def _safe_filename(filename: str) -> str:
     if not cleaned:
         raise ValidationError("Uploaded file must have a usable filename.")
     return cleaned
+
+
+def _parse_ids(value: str) -> list[int]:
+    if not value.strip():
+        return []
+    ids: list[int] = []
+    for part in value.split(","):
+        text = part.strip()
+        if not text:
+            continue
+        if not text.isdigit():
+            raise ValidationError("ids must be a comma-separated list of positive integers.")
+        ids.append(int(text))
+    return ids
 
 
 def _short_token() -> str:

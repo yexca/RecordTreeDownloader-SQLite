@@ -1,9 +1,9 @@
 import { Group, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import type { StatsResult } from '../api/types';
+import type { DownloadPage, ImportPage, StatsResult } from '../api/types';
 import { EmptyState } from '../components/EmptyState';
-import { ErrorBlock, LoadingBlock } from '../components/LoadingError';
+import { ErrorBlock } from '../components/LoadingError';
 import { PlainStatusBadge } from '../components/StatusBadge';
 import { formatBytes } from '../components/format';
 
@@ -22,17 +22,26 @@ function Metric({ label, value }: { label: string; value: number | string }) {
 
 export default function Dashboard({ onOpenRecord }: { onOpenRecord: (id: number) => void }) {
   const [stats, setStats] = useState<StatsResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [imports, setImports] = useState<ImportPage | null>(null);
+  const [downloads, setDownloads] = useState<DownloadPage | null>(null);
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [importsError, setImportsError] = useState<string | null>(null);
+  const [downloadsError, setDownloadsError] = useState<string | null>(null);
 
   useEffect(() => {
     api
       .stats()
       .then(setStats)
-      .catch((err: Error) => setError(err.message));
+      .catch((err: Error) => setStatsError(err.message));
+    api
+      .imports({ page: 1, page_size: 5 })
+      .then(setImports)
+      .catch((err: Error) => setImportsError(err.message));
+    api
+      .downloads({ page: 1, page_size: 5 })
+      .then(setDownloads)
+      .catch((err: Error) => setDownloadsError(err.message));
   }, []);
-
-  if (error) return <ErrorBlock message={error} />;
-  if (!stats) return <LoadingBlock />;
 
   return (
     <Stack gap="md">
@@ -46,26 +55,34 @@ export default function Dashboard({ onOpenRecord }: { onOpenRecord: (id: number)
       </Group>
 
       <SimpleGrid cols={{ base: 2, md: 5 }}>
-        <Metric label="Record groups" value={stats.total_record_groups} />
-        <Metric label="Active links" value={stats.active_link_count} />
-        <Metric label="Inactive links" value={stats.inactive_link_count} />
-        <Metric label="Actors" value={stats.actor_count} />
-        <Metric label="Sources" value={stats.source_count} />
+        <Metric label="Record groups" value={stats?.total_record_groups ?? '...'} />
+        <Metric label="Active links" value={stats?.active_link_count ?? '...'} />
+        <Metric label="Inactive links" value={stats?.inactive_link_count ?? '...'} />
+        <Metric label="Actors" value={stats?.actor_count ?? '...'} />
+        <Metric label="Sources" value={stats?.source_count ?? '...'} />
       </SimpleGrid>
 
       <SimpleGrid cols={{ base: 2, md: 4 }}>
-        <Metric label="Downloaded all" value={stats.downloaded_all} />
-        <Metric label="Partial" value={stats.downloaded_partial} />
-        <Metric label="None" value={stats.downloaded_none} />
-        <Metric label="Unknown" value={stats.downloaded_unknown} />
+        <Metric label="Downloaded all" value={stats?.downloaded_all ?? '...'} />
+        <Metric label="Partial" value={stats?.downloaded_partial ?? '...'} />
+        <Metric label="None" value={stats?.downloaded_none ?? '...'} />
+        <Metric label="Unknown" value={stats?.downloaded_unknown ?? '...'} />
       </SimpleGrid>
+
+      {statsError ? <ErrorBlock message={statsError} /> : null}
 
       <SimpleGrid cols={{ base: 1, lg: 2 }}>
         <Stack p="md" className="section">
           <Title order={3} size="h4">
             Recent Imports
           </Title>
-          {stats.recent_imports.length === 0 ? (
+          {importsError ? (
+            <ErrorBlock message={importsError} />
+          ) : !imports ? (
+            <Text size="sm" c="dimmed">
+              Loading imports...
+            </Text>
+          ) : imports.items.length === 0 ? (
             <EmptyState message="No imports recorded yet." />
           ) : (
             <div className="table-scroll">
@@ -80,7 +97,7 @@ export default function Dashboard({ onOpenRecord }: { onOpenRecord: (id: number)
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {stats.recent_imports.map((item) => (
+                  {imports.items.map((item) => (
                     <Table.Tr key={item.id}>
                       <Table.Td>{item.id}</Table.Td>
                       <Table.Td className="truncate-cell" title={item.source_file_name}>
@@ -103,7 +120,13 @@ export default function Dashboard({ onOpenRecord }: { onOpenRecord: (id: number)
           <Title order={3} size="h4">
             Recent Downloads
           </Title>
-          {stats.recent_downloads.length === 0 ? (
+          {downloadsError ? (
+            <ErrorBlock message={downloadsError} />
+          ) : !downloads ? (
+            <Text size="sm" c="dimmed">
+              Loading downloads...
+            </Text>
+          ) : downloads.items.length === 0 ? (
             <EmptyState message="No downloads recorded yet." />
           ) : (
             <div className="table-scroll">
@@ -117,7 +140,7 @@ export default function Dashboard({ onOpenRecord }: { onOpenRecord: (id: number)
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {stats.recent_downloads.map((item) => (
+                  {downloads.items.map((item) => (
                     <Table.Tr
                       key={item.id}
                       className="click-row"

@@ -1,5 +1,6 @@
 import type {
   ActorSummary,
+  ActorPage,
   ApiError,
   DoctorResult,
   DownloadDetail,
@@ -18,6 +19,7 @@ import type {
   MegaAccountStatus,
   OrphanReport,
   PlatformSummary,
+  PlatformPage,
   RecordDetail,
   RecordPage,
   RecordSummary,
@@ -87,11 +89,19 @@ export const api = {
     }),
   actors: (query: string, limit: number) =>
     request<ActorSummary[]>(`/api/actors${params({ query, limit })}`),
+  actorPage: (query: string, page: number, pageSize: number) =>
+    request<ActorPage>(`/api/actors/page${params({ query, page, page_size: pageSize })}`),
+  actorUndownloadedCounts: (ids: number[]) =>
+    request<Record<string, number>>(`/api/actors/undownloaded-counts${params({ ids: ids.join(',') })}`),
   actor: (actorId: number) => request<ActorSummary>(`/api/actors/${actorId}`),
   actorRecords: (actorId: number, limit: number) =>
     request<RecordSummary[]>(`/api/actors/${actorId}/records${params({ limit })}`),
   platforms: (query: string, limit: number) =>
     request<PlatformSummary[]>(`/api/platforms${params({ query, limit })}`),
+  platformPage: (query: string, page: number, pageSize: number) =>
+    request<PlatformPage>(`/api/platforms/page${params({ query, page, page_size: pageSize })}`),
+  platformUndownloadedCounts: (ids: number[]) =>
+    request<Record<string, number>>(`/api/platforms/undownloaded-counts${params({ ids: ids.join(',') })}`),
   platform: (sourceId: number) => request<PlatformSummary>(`/api/platforms/${sourceId}`),
   platformRecords: (sourceId: number, limit: number) =>
     request<RecordSummary[]>(`/api/platforms/${sourceId}/records${params({ limit })}`),

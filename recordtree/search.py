@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .exceptions import NotFoundError, ValidationError
 from .models import (
+    ActorPage,
     ActorSummary,
     DownloadLink,
     DownloadPlan,
@@ -15,6 +16,7 @@ from .models import (
     RecordPage,
     RecordDetail,
     RecordSummary,
+    SourcePage,
     SourceSummary,
     StatsResult,
 )
@@ -73,6 +75,71 @@ class SearchService:
             )
             for row in rows
         ]
+
+    def list_actor_page(self, name: str, page: int = 1, page_size: int = DEFAULT_LIMIT) -> ActorPage:
+        normalized_page = normalize_page(page)
+        normalized_page_size = normalize_limit(page_size)
+        text = f"%{normalize_search_text(name)}%"
+        total = int(
+            self.conn.execute(
+                "SELECT COUNT(*) FROM actors WHERE name_normalized LIKE ?",
+                (text,),
+            ).fetchone()[0]
+        )
+        offset = (normalized_page - 1) * normalized_page_size
+        rows = self.conn.execute(
+            """
+            SELECT
+                a.id,
+                a.name,
+                COUNT(rg.id) AS record_count
+            FROM actors a
+            LEFT JOIN record_group_actors rga ON rga.actor_id = a.id
+            LEFT JOIN record_groups rg ON rg.id = rga.record_group_id AND rg.is_deleted = 0
+            WHERE a.name_normalized LIKE ?
+            GROUP BY a.id, a.name
+            ORDER BY a.name COLLATE NOCASE, a.id
+            LIMIT ? OFFSET ?
+            """,
+            (text, normalized_page_size, offset),
+        ).fetchall()
+        total_pages = (total + normalized_page_size - 1) // normalized_page_size if total else 0
+        return ActorPage(
+            items=[
+                ActorSummary(
+                    id=int(row["id"]),
+                    name=row["name"],
+                    record_count=int(row["record_count"]),
+                    undownloaded_count=0,
+                )
+                for row in rows
+            ],
+            page=normalized_page,
+            page_size=normalized_page_size,
+            total=total,
+            total_pages=total_pages,
+        )
+
+    def actor_undownloaded_counts(self, actor_ids: list[int]) -> dict[int, int]:
+        ids = _normalized_ids(actor_ids)
+        if not ids:
+            return {}
+        placeholders = ",".join("?" for _ in ids)
+        rows = self.conn.execute(
+            f"""
+            SELECT rga.actor_id, COUNT(DISTINCT rg.id) AS undownloaded_count
+            FROM record_group_actors rga
+            JOIN record_groups rg ON rg.id = rga.record_group_id
+            WHERE rga.actor_id IN ({placeholders})
+              AND rg.is_deleted = 0
+              AND {_undownloaded_exists_sql()}
+            GROUP BY rga.actor_id
+            """,
+            tuple(ids),
+        ).fetchall()
+        counts = {actor_id: 0 for actor_id in ids}
+        counts.update({int(row["actor_id"]): int(row["undownloaded_count"]) for row in rows})
+        return counts
 
     def get_actor(self, actor_id: int) -> ActorSummary:
         if actor_id < 1:
@@ -175,6 +242,71 @@ class SearchService:
             )
             for row in rows
         ]
+
+    def list_platform_page(self, name: str, page: int = 1, page_size: int = DEFAULT_LIMIT) -> SourcePage:
+        normalized_page = normalize_page(page)
+        normalized_page_size = normalize_limit(page_size)
+        text = f"%{normalize_search_text(name)}%"
+        total = int(
+            self.conn.execute(
+                "SELECT COUNT(*) FROM sources WHERE name_normalized LIKE ?",
+                (text,),
+            ).fetchone()[0]
+        )
+        offset = (normalized_page - 1) * normalized_page_size
+        rows = self.conn.execute(
+            """
+            SELECT
+                s.id,
+                s.name,
+                COUNT(rg.id) AS record_count
+            FROM sources s
+            LEFT JOIN record_group_sources rgs ON rgs.source_id = s.id
+            LEFT JOIN record_groups rg ON rg.id = rgs.record_group_id AND rg.is_deleted = 0
+            WHERE s.name_normalized LIKE ?
+            GROUP BY s.id, s.name
+            ORDER BY s.name COLLATE NOCASE, s.id
+            LIMIT ? OFFSET ?
+            """,
+            (text, normalized_page_size, offset),
+        ).fetchall()
+        total_pages = (total + normalized_page_size - 1) // normalized_page_size if total else 0
+        return SourcePage(
+            items=[
+                SourceSummary(
+                    id=int(row["id"]),
+                    name=row["name"],
+                    record_count=int(row["record_count"]),
+                    undownloaded_count=0,
+                )
+                for row in rows
+            ],
+            page=normalized_page,
+            page_size=normalized_page_size,
+            total=total,
+            total_pages=total_pages,
+        )
+
+    def platform_undownloaded_counts(self, source_ids: list[int]) -> dict[int, int]:
+        ids = _normalized_ids(source_ids)
+        if not ids:
+            return {}
+        placeholders = ",".join("?" for _ in ids)
+        rows = self.conn.execute(
+            f"""
+            SELECT rgs.source_id, COUNT(DISTINCT rg.id) AS undownloaded_count
+            FROM record_group_sources rgs
+            JOIN record_groups rg ON rg.id = rgs.record_group_id
+            WHERE rgs.source_id IN ({placeholders})
+              AND rg.is_deleted = 0
+              AND {_undownloaded_exists_sql()}
+            GROUP BY rgs.source_id
+            """,
+            tuple(ids),
+        ).fetchall()
+        counts = {source_id: 0 for source_id in ids}
+        counts.update({int(row["source_id"]): int(row["undownloaded_count"]) for row in rows})
+        return counts
 
     def get_platform(self, source_id: int) -> SourceSummary:
         if source_id < 1:
@@ -829,6 +961,13 @@ def normalize_page(page: int) -> int:
     if page < 1:
         raise ValidationError("Page must be at least 1.")
     return page
+
+
+def _normalized_ids(values: list[int]) -> list[int]:
+    ids = sorted({int(value) for value in values if int(value) > 0})
+    if len(ids) > MAX_LIMIT:
+        raise ValidationError(f"At most {MAX_LIMIT} ids are allowed.")
+    return ids
 
 
 def parse_type_filter(value: str | None) -> set[str] | None:

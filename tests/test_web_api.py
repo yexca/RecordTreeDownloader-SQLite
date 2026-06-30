@@ -134,6 +134,19 @@ async def test_search_detail_stats_and_download_plan_endpoints(
         assert actors[0]["name"] == "API Actor"
         assert actors[0]["record_count"] == 1
 
+        actor_page = (await client.get("/api/actors/page", params={"query": "api", "page": 1, "page_size": 10})).json()
+        assert actor_page["total"] == 1
+        assert actor_page["items"][0]["name"] == "API Actor"
+        assert actor_page["items"][0]["undownloaded_count"] == 0
+
+        actor_counts = (
+            await client.get(
+                "/api/actors/undownloaded-counts",
+                params={"ids": str(actor_page["items"][0]["id"])},
+            )
+        ).json()
+        assert actor_counts[str(actor_page["items"][0]["id"])] == 1
+
         actor_detail = (await client.get(f"/api/actors/{actors[0]['id']}")).json()
         assert actor_detail == actors[0]
 
@@ -143,6 +156,19 @@ async def test_search_detail_stats_and_download_plan_endpoints(
         platforms = (await client.get("/api/platforms", params={"query": "nico"})).json()
         assert platforms[0]["name"] == "niconico"
         assert platforms[0]["record_count"] == 1
+
+        platform_page = (await client.get("/api/platforms/page", params={"query": "nico", "page": 1, "page_size": 10})).json()
+        assert platform_page["total"] == 1
+        assert platform_page["items"][0]["name"] == "niconico"
+        assert platform_page["items"][0]["undownloaded_count"] == 0
+
+        platform_counts = (
+            await client.get(
+                "/api/platforms/undownloaded-counts",
+                params={"ids": str(platform_page["items"][0]["id"])},
+            )
+        ).json()
+        assert platform_counts[str(platform_page["items"][0]["id"])] == 1
 
         platform_detail = (await client.get(f"/api/platforms/{platforms[0]['id']}")).json()
         assert platform_detail == platforms[0]

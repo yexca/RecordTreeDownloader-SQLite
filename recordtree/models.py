@@ -93,6 +93,24 @@ class SourceSummary:
 
 
 @dataclass(frozen=True)
+class ActorPage:
+    items: list[ActorSummary]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+@dataclass(frozen=True)
+class SourcePage:
+    items: list[SourceSummary]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+
+
+@dataclass(frozen=True)
 class RecordSummary:
     id: int
     source_key: str

@@ -20,6 +20,7 @@ from .importer.service import ImportService, apply_upsert_result
 from .models import (
     ActorSummary,
     ActorDownloadResult,
+    ActorPage,
     BackupSummary,
     DoctorCheck,
     DoctorResult,
@@ -45,6 +46,7 @@ from .models import (
     RecordDetail,
     RecordSummary,
     SourceSummary,
+    SourcePage,
     StatsResult,
 )
 from .normalizers import build_source_key, clean_text, normalize_file_type
@@ -561,6 +563,20 @@ class RecordTreeApp:
         finally:
             conn.close()
 
+    def list_actor_page(self, name: str = "", page: int = 1, page_size: int = 50) -> ActorPage:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).list_actor_page(name, page=page, page_size=page_size)
+        finally:
+            conn.close()
+
+    def actor_undownloaded_counts(self, actor_ids: list[int]) -> dict[int, int]:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).actor_undownloaded_counts(actor_ids)
+        finally:
+            conn.close()
+
     def get_actor(self, actor_id: int) -> ActorSummary:
         conn = self._open_app_db()
         try:
@@ -579,6 +595,20 @@ class RecordTreeApp:
         conn = self._open_app_db()
         try:
             return SearchService(conn).search_platform(name, limit)
+        finally:
+            conn.close()
+
+    def list_platform_page(self, name: str = "", page: int = 1, page_size: int = 50) -> SourcePage:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).list_platform_page(name, page=page, page_size=page_size)
+        finally:
+            conn.close()
+
+    def platform_undownloaded_counts(self, source_ids: list[int]) -> dict[int, int]:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).platform_undownloaded_counts(source_ids)
         finally:
             conn.close()
 

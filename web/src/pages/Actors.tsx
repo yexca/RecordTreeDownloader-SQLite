@@ -13,7 +13,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconRefresh, IconSearch } from '@tabler/icons-react';
-import { FormEvent, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { ActorSummary, RecordSummary } from '../api/types';
 import { EmptyState } from '../components/EmptyState';
@@ -22,7 +22,6 @@ import { RecordTable } from '../components/RecordTable';
 import { useCachedState } from '../state/pageState';
 import RecordDetail from './RecordDetail';
 
-const ACTOR_FETCH_LIMIT = 500;
 const DEFAULT_ACTORS_PER_PAGE = 25;
 const RECORD_FETCH_LIMIT = 500;
 const DEFAULT_RECORDS_PER_PAGE = 25;
@@ -36,27 +35,36 @@ export default function Actors() {
   const [recordPage, setRecordPage] = useCachedState('actors.recordPage', 1);
   const [recordsPerPage, setRecordsPerPage] = useCachedState('actors.recordsPerPage', DEFAULT_RECORDS_PER_PAGE);
   const [actors, setActors] = useCachedState<ActorSummary[]>('actors.actors', []);
+  const [totalActors, setTotalActors] = useCachedState('actors.totalActors', 0);
+  const [totalActorPages, setTotalActorPages] = useCachedState('actors.totalActorPages', 0);
   const [selectedActor, setSelectedActor] = useCachedState<ActorSummary | null>('actors.selectedActor', null);
   const [records, setRecords] = useCachedState<RecordSummary[]>('actors.records', []);
   const [selectedRecordId, setSelectedRecordId] = useCachedState<number | null>('actors.selectedRecordId', null);
   const [loadingActors, setLoadingActors] = useState(actors.length === 0);
   const [loadingRecords, setLoadingRecords] = useState(false);
+  const [loadingCounts, setLoadingCounts] = useState(false);
   const [actorError, setActorError] = useState<string | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
 
-  const loadActors = async (event?: FormEvent) => {
-    event?.preventDefault();
+  const loadActorPage = async (nextPage = page, nextPerPage = perPage) => {
     setLoadingActors(true);
     setActorError(null);
     try {
       const id = Number(query.trim());
-      const nextActors =
-        searchMode === 'id' && Number.isInteger(id) && id > 0
-          ? [await api.actor(id)]
-          : await api.actors(searchMode === 'name' ? query : '', ACTOR_FETCH_LIMIT);
-      setActors(nextActors);
-      setPage(1);
-      if (selectedActor && !nextActors.some((actor) => actor.id === selectedActor.id)) {
+      if (searchMode === 'id' && Number.isInteger(id) && id > 0) {
+        const nextActors = [await api.actor(id)];
+        setActors(nextActors);
+        setTotalActors(nextActors.length);
+        setTotalActorPages(1);
+        setPage(1);
+        return;
+      }
+      const result = await api.actorPage(searchMode === 'name' ? query : '', nextPage, nextPerPage);
+      setActors(result.items);
+      setTotalActors(result.total);
+      setTotalActorPages(result.total_pages);
+      setPage(result.page);
+      if (selectedActor && !result.items.some((actor) => actor.id === selectedActor.id)) {
         setSelectedActor(null);
         setRecords([]);
         setSelectedRecordId(null);
@@ -90,21 +98,56 @@ export default function Actors() {
   };
 
   useEffect(() => {
-    if (actors.length === 0) loadActors();
+    if (actors.length === 0) void loadActorPage(1);
     // Initial load only; search form and refresh button control later requests.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (actors.length === 0) return;
+    let cancelled = false;
+    const refreshCounts = async () => {
+      setLoadingCounts(true);
+      try {
+        const counts = await api.actorUndownloadedCounts(actors.map((actor) => actor.id));
+        if (!cancelled) {
+          setActors((current) =>
+            current.map((actor) => ({
+              ...actor,
+              undownloaded_count: counts[String(actor.id)] ?? actor.undownloaded_count,
+            })),
+          );
+          setSelectedActor((current) =>
+            current
+              ? {
+                  ...current,
+                  undownloaded_count: counts[String(current.id)] ?? current.undownloaded_count,
+                }
+              : current,
+          );
+        }
+      } catch {
+        // Counts are secondary; the main directory stays usable.
+      } finally {
+        if (!cancelled) setLoadingCounts(false);
+      }
+    };
+    void refreshCounts();
+    return () => {
+      cancelled = true;
+    };
+  }, [actors.map((actor) => actor.id).join(',')]);
 
   const trimmedQuery = query.trim();
   const visibleActors =
     searchMode === 'id' && trimmedQuery
       ? actors.filter((actor) => String(actor.id).includes(trimmedQuery))
       : actors;
-  const totalPages = Math.max(1, Math.ceil(visibleActors.length / perPage));
+  const totalPages = Math.max(1, searchMode === 'id' ? 1 : totalActorPages);
   const safePage = Math.min(page, totalPages);
-  const pageActors = visibleActors.slice((safePage - 1) * perPage, safePage * perPage);
-  const rangeStart = visibleActors.length === 0 ? 0 : (safePage - 1) * perPage + 1;
-  const rangeEnd = Math.min(safePage * perPage, visibleActors.length);
+  const pageActors = visibleActors;
+  const rangeStart = totalActors === 0 ? 0 : (safePage - 1) * perPage + 1;
+  const rangeEnd = Math.min(safePage * perPage, totalActors);
   const totalRecordPages = Math.max(1, Math.ceil(records.length / recordsPerPage));
   const safeRecordPage = Math.min(recordPage, totalRecordPages);
   const pageRecords = records.slice(
@@ -127,7 +170,13 @@ export default function Actors() {
 
       <div className="actors-layout">
         <Stack className="section actor-directory" gap={0}>
-          <form onSubmit={loadActors}>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              setPage(1);
+              void loadActorPage(1);
+            }}
+          >
             <Stack gap="sm" p="md" className="actor-directory-toolbar">
               <Group justify="space-between" align="start" wrap="nowrap">
                 <div>
@@ -135,7 +184,7 @@ export default function Actors() {
                     Directory
                   </Title>
                   <Text size="xs" c="dimmed">
-                    {visibleActors.length} shown, {actors.length} loaded
+                    {actors.length} shown, {totalActors} total{loadingCounts ? ', counts loading' : ''}
                   </Text>
                 </div>
                 <Tooltip label="Refresh actors">
@@ -144,7 +193,7 @@ export default function Actors() {
                     size={32}
                     aria-label="Refresh actors"
                     loading={loadingActors}
-                    onClick={() => loadActors()}
+                    onClick={() => loadActorPage(page)}
                   >
                     <IconRefresh size={16} />
                   </ActionIcon>
@@ -230,14 +279,16 @@ export default function Actors() {
             <Stack className="actor-directory-footer" gap="xs">
               <Group justify="space-between" align="center" wrap="nowrap">
                 <Text size="xs" c="dimmed">
-                  {rangeStart}-{rangeEnd} of {visibleActors.length}
+                  {rangeStart}-{rangeEnd} of {totalActors}
                 </Text>
                 <Select
                   aria-label="Actors per page"
                   value={String(perPage)}
                   onChange={(value) => {
-                    setPerPage(Number(value) || DEFAULT_ACTORS_PER_PAGE);
+                    const nextPerPage = Number(value) || DEFAULT_ACTORS_PER_PAGE;
+                    setPerPage(nextPerPage);
                     setPage(1);
+                    void loadActorPage(1, nextPerPage);
                   }}
                   data={[
                     { value: '10', label: '10 / page' },
@@ -253,10 +304,13 @@ export default function Actors() {
               <Pagination
                 total={totalPages}
                 value={safePage}
-                onChange={setPage}
                 size="xs"
                 siblings={0}
                 boundaries={1}
+                onChange={(nextPage) => {
+                  setPage(nextPage);
+                  void loadActorPage(nextPage);
+                }}
               />
             </Stack>
           )}

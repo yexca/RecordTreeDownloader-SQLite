@@ -255,6 +255,22 @@ export interface PlatformSummary {
   undownloaded_count: number;
 }
 
+export interface ActorPage {
+  items: ActorSummary[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
+export interface PlatformPage {
+  items: PlatformSummary[];
+  page: number;
+  page_size: number;
+  total: number;
+  total_pages: number;
+}
+
 export interface RecordSummary {
   id: number;
   source_key: string;
