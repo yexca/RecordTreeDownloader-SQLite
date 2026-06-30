@@ -157,6 +157,9 @@ ON record_groups(entry_date);
 CREATE INDEX IF NOT EXISTS idx_record_groups_deleted
 ON record_groups(is_deleted);
 
+CREATE INDEX IF NOT EXISTS idx_record_groups_list_order
+ON record_groups(is_deleted, delivery_date DESC, entry_date DESC, id DESC);
+
 CREATE INDEX IF NOT EXISTS idx_record_groups_source_type
 ON record_groups(source_type);
 
@@ -184,3 +187,9 @@ ON download_items(link_id, status);
 
 CREATE INDEX IF NOT EXISTS idx_legacy_map_group
 ON legacy_migration_map(record_group_id);
+
+CREATE INDEX IF NOT EXISTS idx_record_group_actors_actor_group
+ON record_group_actors(actor_id, record_group_id);
+
+CREATE INDEX IF NOT EXISTS idx_record_group_sources_source_group
+ON record_group_sources(source_id, record_group_id);

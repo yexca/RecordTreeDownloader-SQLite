@@ -615,7 +615,7 @@ class SearchService:
         normalized_limit = normalize_limit(limit)
         rows = self.conn.execute(
             f"""
-            SELECT rg.*,
+            SELECT {_summary_columns_sql()},
                    (
                        SELECT COUNT(*)
                        FROM download_links dl
@@ -647,7 +647,7 @@ class SearchService:
     ) -> list[RecordSummary]:
         rows = self.conn.execute(
             f"""
-            SELECT rg.*,
+            SELECT {_summary_columns_sql()},
                    (
                        SELECT COUNT(*)
                        FROM download_links dl
@@ -855,6 +855,19 @@ def preview_url(url: str, edge: int = 24) -> str:
     if len(url) <= edge * 2 + 3:
         return url
     return f"{url[:edge]}...{url[-edge:]}"
+
+
+def _summary_columns_sql() -> str:
+    return """
+           rg.id,
+           rg.source_key,
+           rg.delivery_date,
+           rg.entry_date,
+           rg.actor_raw,
+           rg.title,
+           rg.source_name,
+           rg.size_bytes
+           """
 
 
 def _summary_from_row(row: sqlite3.Row) -> RecordSummary:
